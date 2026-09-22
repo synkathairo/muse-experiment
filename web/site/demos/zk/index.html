@@ -1,0 +1,108 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+	<meta charset="UTF-8">
+	<meta name="viewport" content="width=device-width, initial-scale=1.0">
+	<link rel="stylesheet" href="/assets/css/styles.css" />
+	<title>zk demo — prove you know x, reveal nothing</title>
+	<style>
+		.proof-box { font-family: monospace; font-size: 0.85em; word-break: break-all;
+		             background: #f4f4f4; padding: 1em; border-radius: 6px; }
+		.result-ok { color: #1a7f37; font-weight: bold; }
+		.result-bad { color: #b42318; font-weight: bold; }
+		label { display: block; margin: 0.8em 0 0.3em; }
+		button { margin-right: 0.5em; }
+	</style>
+</head>
+<body>
+<h1>Zero-knowledge demo: <span style="font-family:monospace">x³ + x + 5 = 35</span></h1>
+<p>
+	This page runs a real (toy) zk-SNARK <em>in your browser</em> via WebAssembly,
+	compiled from the <a href="https://github.com/synkathairo/muse-experiment/tree/main/zk-toy">zk-toy</a>
+	Rust code. Pick a secret <span style="font-family:monospace">x</span>.
+	The prover will convince the verifier that it knows an
+	<span style="font-family:monospace">x</span> with
+	<span style="font-family:monospace">x³ + x + 5 = 35 (mod 257)</span> —
+	without the verifier ever seeing <span style="font-family:monospace">x</span>.
+</p>
+
+<label for="secret">Secret x (0–256):</label>
+<input type="number" id="secret" min="0" max="256" value="3" />
+<button id="proveBtn">1. Generate proof</button>
+
+<h2>Proof</h2>
+<div id="proofOut" class="proof-box">(no proof yet)</div>
+
+<h2>Verification</h2>
+<p>
+	<button id="verifyBtn" disabled>2. Verify against public output 35</button>
+	<button id="tamperBtn" disabled>3. Verify against tampered output 36</button>
+</p>
+<div id="verifyOut">(not verified yet)</div>
+
+<h2>How it works (60 seconds)</h2>
+<ol>
+	<li><strong>Circuit → R1CS → QAP.</strong> The equation becomes rank-1 constraints,
+		then polynomials <span style="font-family:monospace">A, B, C</span> with
+		<span style="font-family:monospace">A·B − C = H·t</span>.</li>
+	<li><strong>Trusted setup.</strong> Random toxic waste
+		<span style="font-family:monospace">s, α</span> (deterministic here, from a fixed seed
+		so the demo is reproducible); publish only encrypted powers
+		<span style="font-family:monospace">E(sⁱ), E(α·sⁱ)</span>.</li>
+	<li><strong>Prove.</strong> Blind evaluation: the prover computes
+		<span style="font-family:monospace">E(A(s))</span> etc. from the encrypted powers
+		without learning <span style="font-family:monospace">s</span>.</li>
+	<li><strong>Verify.</strong> Knowledge-of-exponent check on the α-shifts, then the
+		divisibility check <span style="font-family:monospace">a·b − c = h·t(s)</span>
+		(discrete logs brute-forced — toy-sized group only!).</li>
+</ol>
+<p><a href="../../index.html">← back to demos</a></p>
+
+<script type="module">
+	import init, { prove, verify, public_output } from './pkg/zk_wasm.js';
+
+	const secretEl = document.getElementById('secret');
+	const proofOut = document.getElementById('proofOut');
+	const verifyOut = document.getElementById('verifyOut');
+	const verifyBtn = document.getElementById('verifyBtn');
+	const tamperBtn = document.getElementById('tamperBtn');
+	const SEED = 0xC0FFEE; // same deterministic setup as the Rust demo
+
+	let lastProof = null;
+
+	await init();
+
+	document.getElementById('proveBtn').addEventListener('click', () => {
+		const x = parseInt(secretEl.value, 10);
+		const json = prove(x, SEED);
+		const parsed = JSON.parse(json);
+		if (parsed.error) {
+			proofOut.textContent = 'Error: ' + parsed.error;
+			lastProof = null;
+			verifyBtn.disabled = tamperBtn.disabled = true;
+			return;
+		}
+		lastProof = json;
+		const out = public_output(x);
+		proofOut.textContent = json + '\n// public output for x=' + x + ' is ' + out +
+			(out === 35 ? '  ✓ matches the claim' : '  ✗ does NOT match 35 — proof will still generate, but only verifies against ' + out);
+		verifyOut.textContent = '(not verified yet)';
+		verifyBtn.disabled = tamperBtn.disabled = false;
+	});
+
+	verifyBtn.addEventListener('click', () => {
+		const ok = verify(lastProof, 35, SEED);
+		verifyOut.innerHTML = ok
+			? '<span class="result-ok">✓ Proof VERIFIES against output 35.</span> The verifier is convinced — and never saw x.'
+			: '<span class="result-bad">✗ Proof does NOT verify against 35.</span> (Is your x one with x³+x+5 = 35? Try x = 3.)';
+	});
+
+	tamperBtn.addEventListener('click', () => {
+		const ok = verify(lastProof, 36, SEED);
+		verifyOut.innerHTML = ok
+			? '<span class="result-bad">✓ Verified against 36?! That should never happen — please report this.</span>'
+			: '<span class="result-ok">✗ Correctly REJECTED against tampered output 36.</span> The proof is bound to its public inputs.';
+	});
+</script>
+</body>
+</html>

@@ -6,3 +6,7 @@
 
 __pycache__/
 *.pyc
+
+# wasm-pack build output (built in CI, never committed)
+web/site/demos/zk/pkg/
+web/src/zk-wasm/target/

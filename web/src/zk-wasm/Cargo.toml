@@ -1,0 +1,23 @@
+# zk-wasm: WebAssembly bindings for the zk-toy SNARK.
+#
+# Thin wasm-bindgen layer over ../../zk-toy (path dependency, no crates).
+# The boundary is stateless by design: the trusted setup is deterministic
+# in the seed (XorShift64), so prove() and verify() each rebuild the same
+# setup from the seed instead of passing secrets across the JS boundary.
+#
+[package.metadata.wasm-pack.profile.release]
+wasm-opt = false  # skip binaryen download; toy-sized output is fine as-is
+
+[package]
+name = "zk-wasm"
+version = "0.1.0"
+edition = "2021"
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+zk-toy = { path = "../../../zk-toy" }
+wasm-bindgen = "0.2"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
