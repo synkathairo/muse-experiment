@@ -56,6 +56,18 @@
 		divisibility check <span style="font-family:monospace">a·b − c = h·t(s)</span>
 		(discrete logs brute-forced — toy-sized group only!).</li>
 </ol>
+<h2>Further reading</h2>
+<p>
+	The full writeup lives in the
+	<a href="https://github.com/synkathairo/muse-experiment/blob/main/zk-toy/README.md">zk-toy README</a>.
+	Each pipeline stage has a deeper explainer, each readable in one sitting:
+</p>
+<ul>
+	<li><a href="https://github.com/synkathairo/muse-experiment/blob/main/zk-toy/docs/r1cs.md">R1CS</a> — flattening the circuit, why addition is free, the witness check</li>
+	<li><a href="https://github.com/synkathairo/muse-experiment/blob/main/zk-toy/docs/qap.md">QAP</a> — the interpolation trick, the divisibility argument, Schwartz–Zippel</li>
+	<li><a href="https://github.com/synkathairo/muse-experiment/blob/main/zk-toy/docs/protocol.md">The protocol</a> — hiding, trusted setup, blind evaluation, the KEA check, caveats</li>
+	<li><a href="https://github.com/synkathairo/muse-experiment/blob/main/zk-toy/docs/field-choice.md">Field choice</a> — why F₂₅₇, roots of unity, the mod-1543 subgroup trick</li>
+</ul>
 <p><a href="../../index.html">← back to demos</a></p>
 
 <script type="module">
