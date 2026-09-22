@@ -29,7 +29,8 @@
 	Rust code — Jos Stam's "Stable Fluids": semi-Lagrangian advection plus a
 	pressure solve that enforces incompressibility every frame.
 	<strong>Drag anywhere</strong> to stir dye into the water, or
-	<strong>grab the boat</strong> and drag it around to watch the wake.
+	<strong>grab the boat</strong> and drag it — or drive it with
+	<strong>WASD / arrow keys</strong> — and watch the wake.
 </p>
 
 <div id="stage">
@@ -297,6 +298,36 @@
 	canvas.addEventListener('pointerup', endDrag);
 	canvas.addEventListener('pointercancel', endDrag);
 
+	// ---- keyboard driving (WASD / arrows), game-style ----
+	const keysDown = {};
+	addEventListener('keydown', e => {
+		const k = e.key.toLowerCase();
+		if (k.startsWith('arrow')) e.preventDefault(); // don't scroll the page
+		keysDown[k] = true;
+	});
+	addEventListener('keyup', e => { keysDown[e.key.toLowerCase()] = false; });
+	addEventListener('blur', () => { for (const k in keysDown) keysDown[k] = false; });
+	let keyDriving = false;
+	function driveKeys() {
+		if (!boatOn || dragging === 'boat') return; // pointer drag wins
+		const sp = 1.5; // cells per frame (matches the anti-tunnel clamp)
+		let kx = 0, ky = 0;
+		if (keysDown['arrowleft'] || keysDown['a']) kx -= sp;
+		if (keysDown['arrowright'] || keysDown['d']) kx += sp;
+		if (keysDown['arrowup'] || keysDown['w']) ky -= sp;
+		if (keysDown['arrowdown'] || keysDown['s']) ky += sp;
+		if (kx || ky) {
+			const nx = Math.max(6, Math.min(n-6, boat.x + kx));
+			const ny = Math.max(6, Math.min(n-6, boat.y + ky));
+			move_boat(nx, ny, (nx - boat.x) * 0.9, (ny - boat.y) * 0.9);
+			boat.x = nx; boat.y = ny;
+			keyDriving = true;
+		} else if (keyDriving) {
+			move_boat(boat.x, boat.y, 0, 0); // keys released: stop the boat
+			keyDriving = false;
+		}
+	}
+
 	// ---- controls ----
 	$('pauseBtn').addEventListener('click', () => {
 		paused = !paused;
@@ -325,7 +356,7 @@
 	let frames = 0, lastT = performance.now(), fps = 0, solverMs = 0;
 	function loop() {
 		const t0 = performance.now();
-		if (!paused) step();
+		if (!paused) { driveKeys(); step(); }
 		solverMs = solverMs*0.9 + (performance.now()-t0)*0.1;
 		render();
 		frames++;
