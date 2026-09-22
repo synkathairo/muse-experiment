@@ -201,8 +201,11 @@
 		} else if (view === 'velocity') {
 			const U = f32(vel_u_ptr(), n*n), V = f32(vel_v_ptr(), n*n);
 			const R = f32(dye_r_ptr(), n*n), G = f32(dye_g_ptr(), n*n), B = f32(dye_b_ptr(), n*n);
+			const S = u8(solid_ptr(), n*n);
 			for (let i = 0; i < n*n; i++) {
-				const o = i*4, sp = Math.hypot(U[i], V[i]);
+				const o = i*4;
+				if (S[i]) { px[o]=235; px[o+1]=240; px[o+2]=245; px[o+3]=255; continue; }
+				const sp = Math.hypot(U[i], V[i]);
 				const a = Math.min(1, sp / 6);
 				px[o]   = 20 + 235*a;
 				px[o+1] = 30 + 200*a + 40*Math.min(1,(R[i]+G[i]+B[i])/3);
@@ -211,8 +214,11 @@
 			}
 		} else { // divergence: red = source, blue = sink
 			const D = f32(div_ptr(), n*n);
+			const S = u8(solid_ptr(), n*n);
 			for (let i = 0; i < n*n; i++) {
-				const o = i*4, d = Math.max(-1, Math.min(1, D[i]*4));
+				const o = i*4;
+				if (S[i]) { px[o]=235; px[o+1]=240; px[o+2]=245; px[o+3]=255; continue; }
+				const d = Math.max(-1, Math.min(1, D[i]*4));
 				px[o]   = d > 0 ? 40 + 215*d : 40;
 				px[o+1] = 40;
 				px[o+2] = d < 0 ? 40 - 215*d : 40;
