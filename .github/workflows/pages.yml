@@ -6,6 +6,7 @@ on:
     paths:
       - 'web/site/**'
       - 'web/src/**'
+      - 'fluid-sim/**'
       - '.github/workflows/pages.yml'
 
 permissions:
@@ -30,6 +31,10 @@ jobs:
       - name: Build zk WASM demo
         run: wasm-pack build --target web --out-dir ../../site/demos/zk/pkg
         working-directory: web/src/zk-wasm
+
+      - name: Build fluid WASM demo
+        run: wasm-pack build --target web --out-dir ../../site/demos/fluid/pkg
+        working-directory: web/src/fluid-wasm
 
       - uses: actions/upload-pages-artifact@v3
         with:
