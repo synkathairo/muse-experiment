@@ -17,8 +17,7 @@ Obstacles are a boolean mask over the grid (`Fluid::solid`). Each frame:
 
 ## Where the body velocity comes from
 
-The demo tracks the pointer: each frame,
-$\mathbf{v}_{body} = (\mathbf{x}_{new} - \mathbf{x}_{old}) / dt$.
+The demo tracks the pointer: each frame, $\mathbf{v}_{body} = (\mathbf{x}_{new} - \mathbf{x}_{old}) / dt$.
 The fluid doesn't know about mice — it just sees a mask with a
 prescribed velocity.
 

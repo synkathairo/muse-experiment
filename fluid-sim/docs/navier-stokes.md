@@ -3,12 +3,9 @@
 The incompressible Navier-Stokes equations describe the velocity field
 **u**(x, t) of a fluid with constant density:
 
-$$\frac{\partial \mathbf{u}}{\partial t} =
-  -(\mathbf{u}\cdot\nabla)\mathbf{u}
-  -\frac{1}{\rho}\nabla p
-  + \nu\nabla^2\mathbf{u}
-  + \mathbf{f}, \qquad
-  \nabla\cdot\mathbf{u} = 0$$
+$$\frac{\partial \mathbf{u}}{\partial t} = -(\mathbf{u}\cdot\nabla)\mathbf{u} -\frac{1}{\rho}\nabla p + \nu\nabla^2\mathbf{u} + \mathbf{f}$$
+
+$$\nabla\cdot\mathbf{u} = 0$$
 
 Term by term:
 
