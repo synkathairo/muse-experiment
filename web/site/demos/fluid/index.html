@@ -156,6 +156,14 @@
 	let view = 'dye';
 	let boatOn = true;
 	let boat = { x: n * 0.32, y: n * 0.5, heading: 0, vx: 0, vy: 0 };
+	// Hull polygon, copied from fluid-sim's HULL_POLY (bow points +x, unit
+	// coords; the sim scales by 5.0 and rotates by heading before
+	// rasterizing). Drawn as a crisp vector overlay because the rasterized
+	// physics mask is blocky at grid resolution.
+	const HULL = [
+		[1.6, 0.0], [1.0, 0.45], [-0.6, 0.7], [-1.5, 0.5],
+		[-1.5, -0.5], [-0.6, -0.7], [1.0, -0.45],
+	];
 
 	function pushParams() {
 		set_params(
@@ -213,7 +221,11 @@
 				const o = i*4;
 				if (S[i]) { px[o]=235; px[o+1]=240; px[o+2]=245; px[o+3]=255; continue; }
 				const sp = Math.hypot(U[i], V[i]);
-				const a = Math.min(1, sp / 6);
+				// sqrt lift: wakes run 0.5-2 cells/frame, which the old
+				// linear sp/6 mapping left at ~10-30% brightness against a
+				// near-black background. sqrt(sp/4) puts a 1-cell/frame wake
+				// at 50% instead of 17%.
+				const a = Math.min(1, Math.sqrt(sp / 4));
 				px[o]   = 20 + 235*a;
 				px[o+1] = 30 + 200*a + 40*Math.min(1,(R[i]+G[i]+B[i])/3);
 				px[o+2] = 60 + 160*a;
@@ -225,7 +237,11 @@
 			for (let i = 0; i < n*n; i++) {
 				const o = i*4;
 				if (S[i]) { px[o]=235; px[o+1]=240; px[o+2]=245; px[o+3]=255; continue; }
-				const d = Math.max(-1, Math.min(1, D[i]*4));
+				// gain 8 (was 4): the collocated grid's divergence floor sits
+				// near ~0.02, so the old gain left real features barely off
+				// the dark gray. The faint background texture this reveals
+				// is the solver's actual residual, not a rendering artifact.
+				const d = Math.max(-1, Math.min(1, D[i]*8));
 				px[o]   = d > 0 ? 40 + 215*d : 40;
 				px[o+1] = 40;
 				px[o+2] = d < 0 ? 40 - 215*d : 40;
@@ -237,15 +253,38 @@
 		ctx.imageSmoothingQuality = 'high';
 		ctx.drawImage(off, 0, 0, W, H);
 
+		if (boatOn) {
+			// Crisp vector hull on top of the blocky raster mask. The mask
+			// is sampled at cell centers, so its white fringe reaches ~0.5
+			// cell past the polygon edge; drawing 7% oversize swallows it.
+			// Same rotation convention as the sim's move_boat.
+			const s = W / n, c = Math.cos(boat.heading), h = Math.sin(boat.heading);
+			const k = 5.0 * 1.07; // BOAT_SCALE, slightly oversize
+			ctx.beginPath();
+			HULL.forEach(([hx, hy], j) => {
+				const gx = boat.x + (hx * c - hy * h) * k;
+				const gy = boat.y + (hx * h + hy * c) * k;
+				if (j === 0) ctx.moveTo(gx * s, gy * s);
+				else ctx.lineTo(gx * s, gy * s);
+			});
+			ctx.closePath();
+			ctx.fillStyle = '#edf1f6';
+			ctx.fill();
+			ctx.lineWidth = 2;
+			ctx.strokeStyle = '#1b2c40';
+			ctx.stroke();
+		}
+
 		if (view === 'velocity') { // arrow overlay, subsampled
 			const U = f32(vel_u_ptr(), n*n), V = f32(vel_v_ptr(), n*n);
+			const S = u8(solid_ptr(), n*n);
 			const s = W / n, st = 8;
 			ctx.strokeStyle = 'rgba(255,255,255,0.75)';
 			ctx.lineWidth = 1;
 			ctx.beginPath();
 			for (let y = st/2; y < n; y += st) for (let x = st/2; x < n; x += st) {
 				const i = y*n+x, m = Math.min(1, Math.hypot(U[i],V[i])/8);
-				if (m < 0.05) continue;
+				if (m < 0.05 || S[i]) continue;
 				const x0 = x*s, y0 = y*s;
 				ctx.moveTo(x0, y0);
 				ctx.lineTo(x0 + U[i]*s*1.2, y0 + V[i]*s*1.2);
