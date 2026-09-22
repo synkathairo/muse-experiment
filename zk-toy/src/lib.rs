@@ -7,3 +7,5 @@
 
 pub mod field;
 pub mod poly;
+pub mod qap;
+pub mod r1cs;
