@@ -15,6 +15,9 @@ Run it:
 ```sh
 cargo test              # full test suite (field, poly, R1CS, QAP, SNARK)
 cargo run --release     # demo: prove knowledge of x = 3, verify, show rejections
+cargo run --release -- tour    # guided walk of the pipeline with your own secret x
+cargo run --release -- attack  # play the adversary: forge and tamper, see what catches you
+cargo run --release -- --help  # list all modes
 ```
 
 ## Background reading
