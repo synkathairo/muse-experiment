@@ -5,7 +5,7 @@
 //!   1. create(n)            -> fresh n×n sim
 //!   2. set_params(...)      -> viscosity, vorticity, dye fade, Jacobi iters
 //!   3. splat(x,y,dx,dy,r,g,b) -> inject velocity + dye (mouse drags)
-//!   4. move_boat(x,y,vx,vy) -> re-rasterize the hull mask (drag the boat)
+//!   4. move_boat(x,y,angle,vx,vy) -> re-rasterize the hull mask (drag/steer the boat)
 //!   5. step()               -> advance one frame
 //!   6. read dye/velocity/divergence via raw pointers into WASM memory
 //! All numerics live in fluid-sim; nothing is computed here.
@@ -72,11 +72,17 @@ pub fn set_params(viscosity: f32, vorticity_slider: f32, dye_fade: f32, jacobi_i
     });
 }
 
-/// Move the boat hull to (x, y) with body velocity (vx, vy) in cells/frame.
+/// Move the boat hull to (x, y) with heading `angle` (radians, 0 = bow
+/// pointing +x) and body velocity (vx, vy) in cells/frame.
 /// The solver clamps against tunneling internally.
 #[wasm_bindgen]
-pub fn move_boat(x: f32, y: f32, vx: f32, vy: f32) {
-    with_state(|st| st.fluid.set_hull(&HULL_POLY, (x, y), BOAT_SCALE, (vx, vy)));
+pub fn move_boat(x: f32, y: f32, angle: f32, vx: f32, vy: f32) {
+    let (s, c) = angle.sin_cos();
+    let rotated: Vec<(f32, f32)> = HULL_POLY
+        .iter()
+        .map(|&(px, py)| (px * c - py * s, px * s + py * c))
+        .collect();
+    with_state(|st| st.fluid.set_hull(&rotated, (x, y), BOAT_SCALE, (vx, vy)));
 }
 
 /// Remove the boat from the domain.

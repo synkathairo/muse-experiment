@@ -29,8 +29,9 @@
 	Rust code — Jos Stam's "Stable Fluids": semi-Lagrangian advection plus a
 	pressure solve that enforces incompressibility every frame.
 	<strong>Drag anywhere</strong> to stir dye into the water, or
-	<strong>grab the boat</strong> and drag it — or drive it with
-	<strong>WASD / arrow keys</strong> — and watch the wake.
+	<strong>grab the boat</strong> and drag it — or drive it like a real boat:
+	<strong>W/S</strong> throttle, <strong>A/D</strong> rudder (arrow keys work too)
+	— and watch the wake.
 </p>
 
 <div id="stage">
@@ -104,6 +105,9 @@
 	<li>Push <em>viscosity</em> up and the water turns to honey.</li>
 	<li>Switch to the <em>divergence</em> view while dragging the boat —
 		red is the bow wave being born, blue is the wake filling in.</li>
+	<li>Paint a dye blob, then drive the boat through it (W/S throttle,
+		A/D rudder) — the wake folds the dye around the hull. Dye mode
+		shows dye, not motion, so clear water looks still even when it moves.</li>
 </ul>
 <h2>Further reading</h2>
 <p>
@@ -149,7 +153,7 @@
 	let paused = false;
 	let view = 'dye';
 	let boatOn = true;
-	let boat = { x: n * 0.32, y: n * 0.5 };
+	let boat = { x: n * 0.32, y: n * 0.5, heading: 0, vx: 0, vy: 0 };
 
 	function pushParams() {
 		set_params(
@@ -168,7 +172,7 @@
 	pushParams();
 
 	function placeBoat() {
-		if (boatOn) move_boat(boat.x, boat.y, 0, 0);
+		if (boatOn) move_boat(boat.x, boat.y, boat.heading, 0, 0);
 		else clear_boat();
 	}
 	placeBoat();
@@ -286,13 +290,13 @@
 			const vx = (p.x - lastBoat.x) * 0.85, vy = (p.y - lastBoat.y) * 0.85;
 			boat.x = Math.max(6, Math.min(n-6, p.x));
 			boat.y = Math.max(6, Math.min(n-6, p.y));
-			move_boat(boat.x, boat.y, vx, vy);
+			move_boat(boat.x, boat.y, boat.heading, vx, vy);
 			lastBoat = { x: p.x, y: p.y };
 		}
 		last = p;
 	});
 	const endDrag = e => {
-		if (dragging === 'boat') move_boat(boat.x, boat.y, 0, 0); // release: stop
+		if (dragging === 'boat') { boat.vx = boat.vy = 0; move_boat(boat.x, boat.y, boat.heading, 0, 0); } // release: stop
 		dragging = null;
 	};
 	canvas.addEventListener('pointerup', endDrag);
@@ -307,25 +311,45 @@
 	});
 	addEventListener('keyup', e => { keysDown[e.key.toLowerCase()] = false; });
 	addEventListener('blur', () => { for (const k in keysDown) keysDown[k] = false; });
+	// ---- keyboard helm: throttle + rudder, real boat feel ----
+	// W/S = throttle forward/reverse, A/D = rudder (arrows work too).
+	// The hull grips laterally but glides forward, and the rudder only
+	// bites with forward speed (flipping in reverse), like a real boat.
 	let keyDriving = false;
 	function driveKeys() {
 		if (!boatOn || dragging === 'boat') return; // pointer drag wins
-		const sp = 1.5; // cells per frame (matches the anti-tunnel clamp)
-		let kx = 0, ky = 0;
-		if (keysDown['arrowleft'] || keysDown['a']) kx -= sp;
-		if (keysDown['arrowright'] || keysDown['d']) kx += sp;
-		if (keysDown['arrowup'] || keysDown['w']) ky -= sp;
-		if (keysDown['arrowdown'] || keysDown['s']) ky += sp;
-		if (kx || ky) {
-			const nx = Math.max(6, Math.min(n-6, boat.x + kx));
-			const ny = Math.max(6, Math.min(n-6, boat.y + ky));
-			move_boat(nx, ny, (nx - boat.x) * 0.9, (ny - boat.y) * 0.9);
-			boat.x = nx; boat.y = ny;
-			keyDriving = true;
-		} else if (keyDriving) {
-			move_boat(boat.x, boat.y, 0, 0); // keys released: stop the boat
-			keyDriving = false;
+		const THRUST = 0.07, REV = 0.05, MAXV = 1.2, MAXREV = 0.6, TURN = 0.05;
+		let throttle = 0, rudder = 0;
+		if (keysDown['w'] || keysDown['arrowup']) throttle += 1;
+		if (keysDown['s'] || keysDown['arrowdown']) throttle -= 1;
+		if (keysDown['a'] || keysDown['arrowleft']) rudder -= 1;
+		if (keysDown['d'] || keysDown['arrowright']) rudder += 1;
+
+		let c = Math.cos(boat.heading), s = Math.sin(boat.heading);
+		const vFwd = boat.vx * c + boat.vy * s;
+		boat.heading += rudder * TURN * Math.max(-1, Math.min(1, vFwd / 0.6));
+		c = Math.cos(boat.heading); s = Math.sin(boat.heading);
+
+		if (throttle > 0) { boat.vx += c * THRUST; boat.vy += s * THRUST; }
+		else if (throttle < 0) { boat.vx -= c * REV; boat.vy -= s * REV; }
+
+		// decompose velocity: gentle forward drag, hard lateral grip
+		let f = boat.vx * c + boat.vy * s;
+		let l = -boat.vx * s + boat.vy * c;
+		f = Math.max(-MAXREV, Math.min(MAXV, f * 0.985));
+		l *= 0.90;
+		boat.vx = c * f - s * l;
+		boat.vy = s * f + c * l;
+
+		if (!throttle && !rudder && Math.hypot(boat.vx, boat.vy) < 0.002) {
+			boat.vx = boat.vy = 0;
+			return; // fully at rest: hull already placed
 		}
+		let nx = boat.x + boat.vx, ny = boat.y + boat.vy;
+		if (nx < 6 || nx > n - 6) { boat.vx = 0; nx = Math.max(6, Math.min(n - 6, nx)); }
+		if (ny < 6 || ny > n - 6) { boat.vy = 0; ny = Math.max(6, Math.min(n - 6, ny)); }
+		boat.x = nx; boat.y = ny;
+		move_boat(boat.x, boat.y, boat.heading, boat.vx * 0.9, boat.vy * 0.9);
 	}
 
 	// ---- controls ----
@@ -337,7 +361,7 @@
 	$('stepBtn').addEventListener('click', () => { step(); render(); });
 	$('resetBtn').addEventListener('click', () => {
 		create(n); pushParams();
-		boat = { x: n*0.32, y: n*0.5 };
+		boat = { x: n*0.32, y: n*0.5, heading: 0, vx: 0, vy: 0 };
 		placeBoat();
 	});
 	$('boatBtn').addEventListener('click', () => {
