@@ -26,7 +26,7 @@ ever grows a numpy dependency).
 
 ## The idea in one page
 
-LWE samples look like $(\mathbf{a},\, b = \langle \mathbf{a}, \mathbf{s} \rangle + e \bmod p)$.
+LWE samples look like $(\mathbf{a}, b = \langle \mathbf{a}, \mathbf{s} \rangle + e \bmod p)$.
 Part 1 of the demo deletes $e$ and recovers $\mathbf{s}$ by Gaussian
 elimination in under a millisecond: without noise, there is no hard problem.
 
