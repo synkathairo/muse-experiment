@@ -44,6 +44,7 @@
 		<button id="stepBtn" disabled>Step 1 frame</button>
 		<button id="resetBtn">Reset</button>
 		<button id="boatBtn" aria-pressed="true">Boat: on</button>
+		<label><input type="checkbox" id="trail" checked> Dye trail</label>
 	</div>
 	<div class="row">
 		<span>View:</span>
@@ -105,9 +106,10 @@
 	<li>Push <em>viscosity</em> up and the water turns to honey.</li>
 	<li>Switch to the <em>divergence</em> view while dragging the boat —
 		red is the bow wave being born, blue is the wake filling in.</li>
-	<li>Paint a dye blob, then drive the boat through it (W/S throttle,
-		A/D rudder) — the wake folds the dye around the hull. Dye mode
-		shows dye, not motion, so clear water looks still even when it moves.</li>
+	<li>Drive the boat (W/S throttle, A/D rudder) with <em>dye trail</em>
+		on — the stern leaves a visible wake in dye mode. Toggle it off to
+		confirm that dye mode shows dye, not motion: clear water looks still
+		even when it moves.</li>
 </ul>
 <h2>Further reading</h2>
 <p>
@@ -376,11 +378,27 @@
 			x.setAttribute('aria-pressed', x === b));
 	}));
 
+	// ---- dye trail: the stern leaves a puff of dye while moving ----
+	// The boat pushes fluid but emits no dye, so in dye mode its wake is
+	// invisible in clear water. This is purely cosmetic: it adds dye only
+	// (no velocity), so the physics are untouched.
+	let trailPx = boat.x, trailPy = boat.y;
+	function emitTrail() {
+		const spd = Math.hypot(boat.x - trailPx, boat.y - trailPy);
+		trailPx = boat.x; trailPy = boat.y;
+		if (!$('trail').checked || !boatOn || paused || spd < 0.25) return;
+		const c = Math.cos(boat.heading), s = Math.sin(boat.heading);
+		// hull is ~15.5 cells long; the stern sits ~7.5 behind center
+		const sx = Math.max(1, Math.min(n-2, boat.x - c*8.5));
+		const sy = Math.max(1, Math.min(n-2, boat.y - s*8.5));
+		splat(sx, sy, 0, 0, 0.18, 0.26, 0.38);
+	}
+
 	// ---- main loop ----
 	let frames = 0, lastT = performance.now(), fps = 0, solverMs = 0;
 	function loop() {
 		const t0 = performance.now();
-		if (!paused) { driveKeys(); step(); }
+		if (!paused) { driveKeys(); emitTrail(); step(); }
 		solverMs = solverMs*0.9 + (performance.now()-t0)*0.1;
 		render();
 		frames++;
