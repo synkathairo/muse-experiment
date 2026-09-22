@@ -1,0 +1,5 @@
+# Global editor/OS junk only. Language-specific ignores live in each
+# project's own .gitignore (e.g. zk-toy/.gitignore).
+*.swp
+*~
+.DS_Store

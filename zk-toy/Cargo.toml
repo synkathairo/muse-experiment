@@ -1,0 +1,13 @@
+[package]
+name = "zk-toy"
+version = "0.1.0"
+edition = "2021"
+description = "A from-scratch educational zk-SNARK toy: R1CS -> QAP -> homomorphic hiding, no crypto crates"
+
+[lib]
+name = "zk_toy"
+path = "src/lib.rs"
+
+[[bin]]
+name = "zk-toy-demo"
+path = "src/main.rs"
