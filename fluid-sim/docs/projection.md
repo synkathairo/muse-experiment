@@ -11,9 +11,7 @@ Take the divergence of both sides:
 $$\nabla^2 p = \nabla\cdot\mathbf{u}^*$$
 
 Solve this Poisson equation for $p$, subtract $\nabla p$, and what
-remains is divergence-free — because
-$\nabla\cdot(\mathbf{u}^* - \nabla p) = \nabla\cdot\mathbf{u}^* -
-\nabla^2 p = 0$. The pressure here isn't physical pressure; it's the
+remains is divergence-free — because $\nabla\cdot(\mathbf{u}^* - \nabla p) = \nabla\cdot\mathbf{u}^* - \nabla^2 p = 0$. The pressure here isn't physical pressure; it's the
 Lagrange multiplier that enforces the constraint. (`project.rs`.)
 
 ## Discretization

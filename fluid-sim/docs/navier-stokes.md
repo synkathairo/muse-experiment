@@ -12,19 +12,19 @@ $$\frac{\partial \mathbf{u}}{\partial t} =
 
 Term by term:
 
-- **$-(\mathbf{u}\cdot\nabla)\mathbf{u}$** — *advection*: the fluid carries
+- $-(\mathbf{u}\cdot\nabla)\mathbf{u}$ — *advection*: the fluid carries
   itself along. This is the nonlinear term and the source of all the
   beautiful chaos. Handled in `advect.rs`.
-- **$-\frac{1}{\rho}\nabla p$** — *pressure*: the force that stops the
+- $-\frac{1}{\rho}\nabla p$ — *pressure*: the force that stops the
   fluid from piling up. We never simulate pressure as a physical
   quantity; we *solve* for whatever pressure field makes the velocity
   divergence-free. Handled in `project.rs`.
-- **$\nu\nabla^2\mathbf{u}$** — *viscosity*: momentum diffusion.
+- $\nu\nabla^2\mathbf{u}$ — *viscosity*: momentum diffusion.
   $\nu = 0$ is an ideal (Euler) fluid; large $\nu$ is honey. A tiny
   explicit diffusion step in `project.rs`.
-- **$\mathbf{f}$** — external forces: your mouse, the boat hull,
+- $\mathbf{f}$ — external forces: your mouse, the boat hull,
   vorticity confinement.
-- **$\nabla\cdot\mathbf{u} = 0$** — *incompressibility*: the velocity
+- $\nabla\cdot\mathbf{u} = 0$ — *incompressibility*: the velocity
   field has no sources or sinks. This is not evolved — it is
   **enforced**, every frame, by the projection. It is the entire reason
   the sim looks like liquid instead of smoke drifting through a vacuum.
