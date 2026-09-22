@@ -17,6 +17,16 @@ cargo test              # full test suite (field, poly, R1CS, QAP, SNARK)
 cargo run --release     # demo: prove knowledge of x = 3, verify, show rejections
 ```
 
+## Background reading
+
+Each stage of the pipeline has a deeper writeup in `docs/` — each one
+readable in a single sitting:
+
+- [R1CS](docs/r1cs.md) — flattening, why addition is free, the witness check
+- [QAP](docs/qap.md) — the interpolation trick, the divisibility argument, Schwartz–Zippel
+- [The protocol](docs/protocol.md) — hiding, trusted setup, blind evaluation, KEA, expanded caveats
+- [Field choice](docs/field-choice.md) — why F₂₅₇, roots of unity, the mod-1543 subgroup trick
+
 ## 1. The field: F₂₅₇
 
 We do all circuit arithmetic in the prime field F_p with **p = 257**, because:
