@@ -5,4 +5,5 @@
 //!
 //! Standard library only. See README.md for the math walkthrough.
 
-// Modules land here as they are implemented.
+pub mod field;
+pub mod poly;
