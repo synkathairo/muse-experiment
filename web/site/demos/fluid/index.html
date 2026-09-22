@@ -1,0 +1,338 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+	<meta charset="UTF-8">
+	<meta name="viewport" content="width=device-width, initial-scale=1.0">
+	<link rel="stylesheet" href="/assets/css/styles.css" />
+	<title>fluid demo — drag the boat</title>
+	<style>
+		#stage { position: relative; max-width: 640px; }
+		canvas { display: block; width: 100%; border-radius: 8px;
+		         background: #06121f; touch-action: none; cursor: crosshair; }
+		#panel { max-width: 640px; margin-top: 1em; }
+		#panel .row { display: flex; flex-wrap: wrap; gap: 1em; align-items: center;
+		              margin: 0.5em 0; }
+		#panel label { font-size: 0.9em; }
+		#panel input[type=range] { width: 130px; vertical-align: middle; }
+		#readout { font-family: monospace; font-size: 0.85em; background: #f4f4f4;
+		           padding: 0.6em 1em; border-radius: 6px; display: inline-block; }
+		button { margin-right: 0.5em; }
+		.viewbtn[aria-pressed=true] { font-weight: bold; }
+	</style>
+</head>
+<body>
+<h1>Fluid demo: a little boat in a box of water</h1>
+<p>
+	This page runs a real 2D incompressible fluid solver <em>in your browser</em>
+	via WebAssembly, compiled from the
+	<a href="https://github.com/synkathairo/muse-experiment/tree/main/fluid-sim">fluid-sim</a>
+	Rust code — Jos Stam's "Stable Fluids": semi-Lagrangian advection plus a
+	pressure solve that enforces incompressibility every frame.
+	<strong>Drag anywhere</strong> to stir dye into the water, or
+	<strong>grab the boat</strong> and drag it around to watch the wake.
+</p>
+
+<div id="stage">
+	<canvas id="sim" width="512" height="512"></canvas>
+</div>
+
+<div id="panel">
+	<div class="row">
+		<button id="pauseBtn">Pause</button>
+		<button id="stepBtn" disabled>Step 1 frame</button>
+		<button id="resetBtn">Reset</button>
+		<button id="boatBtn" aria-pressed="true">Boat: on</button>
+	</div>
+	<div class="row">
+		<span>View:</span>
+		<button class="viewbtn" data-view="dye" aria-pressed="true">dye</button>
+		<button class="viewbtn" data-view="velocity" aria-pressed="false">velocity</button>
+		<button class="viewbtn" data-view="divergence" aria-pressed="false">divergence</button>
+	</div>
+	<div class="row">
+		<label>Viscosity <input type="range" id="visc" min="0" max="0.5" step="0.01" value="0"></label>
+		<span id="viscVal">0</span>
+	</div>
+	<div class="row">
+		<label>Vorticity <input type="range" id="vort" min="0" max="40" step="1" value="5"></label>
+		<span id="vortVal">5</span>
+	</div>
+	<div class="row">
+		<label>Dye fade <input type="range" id="fade" min="0" max="0.05" step="0.001" value="0.002"></label>
+		<span id="fadeVal">0.002</span>
+	</div>
+	<div class="row">
+		<label>Pressure iters <input type="range" id="jacobi" min="1" max="100" step="1" value="30"></label>
+		<span id="jacobiVal">30</span>
+	</div>
+	<div class="row">
+		<span id="readout">starting…</span>
+	</div>
+</div>
+
+<h2>How it works (60 seconds)</h2>
+<ol>
+	<li><strong>Advect.</strong> Every cell traces <em>backwards</em> along the
+		velocity field and interpolates — unconditionally stable, which is why
+		you can drag as violently as you like without it exploding. The price
+		is smearing: fine vortices fade unless vorticity confinement
+		(the slider) re-injects swirl.</li>
+	<li><strong>Project.</strong> Advection leaves the velocity field
+		compressed (nonzero divergence). The solver computes
+		<span style="font-family:monospace">∇²p = ∇·u</span> with Jacobi
+		iteration and subtracts <span style="font-family:monospace">∇p</span>,
+		leaving the flow incompressible. This is the expensive step — drop
+		<em>pressure iters</em> to 4 and watch the sim turn to mush.</li>
+	<li><strong>Solids.</strong> The boat is a rasterized mask whose cells are
+		pinned to the boat's velocity each frame (no-slip in the body's
+		frame). The wake, the bow wave, the shedding eddies — all emergent.</li>
+</ol>
+<p>
+	The two equations being solved, every frame, on a 128×128 grid:
+</p>
+<p style="font-family:monospace">
+	∂u/∂t = −(u·∇)u − ∇p/ρ + ν∇²u + f<br>
+	∇·u = 0
+</p>
+<h2>Things to try</h2>
+<ul>
+	<li>Drag the <em>pressure iters</em> slider to minimum — that's the
+		incompressibility tax made visible.</li>
+	<li>Crank <em>vorticity</em> to 40 and watch <em>max div</em> climb: the
+		confinement hack is positive feedback, fighting the projection.</li>
+	<li>Push <em>viscosity</em> up and the water turns to honey.</li>
+	<li>Switch to the <em>divergence</em> view while dragging the boat —
+		red is the bow wave being born, blue is the wake filling in.</li>
+</ul>
+<h2>Further reading</h2>
+<p>
+	The full writeup lives in the
+	<a href="https://github.com/synkathairo/muse-experiment/blob/main/fluid-sim/README.md">fluid-sim README</a>.
+	Each piece has a deeper explainer, each readable in one sitting:
+</p>
+<ul>
+	<li><a href="https://github.com/synkathairo/muse-experiment/blob/main/fluid-sim/docs/navier-stokes.md">Navier-Stokes</a> — the equations, incompressibility, operator splitting</li>
+	<li><a href="https://github.com/synkathairo/muse-experiment/blob/main/fluid-sim/docs/advection.md">Advection</a> — why semi-Lagrangian is stable, what it smears, vorticity confinement</li>
+	<li><a href="https://github.com/synkathairo/muse-experiment/blob/main/fluid-sim/docs/projection.md">Projection</a> — the Poisson solve, Jacobi, collocated vs staggered grids</li>
+	<li><a href="https://github.com/synkathairo/muse-experiment/blob/main/fluid-sim/docs/moving-solids.md">Moving solids</a> — rasterized masks, no-slip bodies, anti-tunneling</li>
+</ul>
+<p><a href="../../index.html">← back to demos</a></p>
+
+<script type="module">
+	import init, {
+		create, step, splat, set_params, move_boat, clear_boat,
+		max_divergence, grid_n,
+		dye_r_ptr, dye_g_ptr, dye_b_ptr,
+		vel_u_ptr, vel_v_ptr, div_ptr, solid_ptr,
+	} from './pkg/fluid_wasm.js';
+
+	const wasm = await init();
+
+	const N = 128;
+	const canvas = document.getElementById('sim');
+	const ctx = canvas.getContext('2d');
+	const W = canvas.width, H = canvas.height;
+	const img = ctx.createImageData(N, N);
+	const off = document.createElement('canvas');
+	off.width = N; off.height = N;
+	const offCtx = off.getContext('2d');
+
+	const f32 = (ptr, len) => new Float32Array(wasm.memory.buffer, ptr, len);
+	const u8 = (ptr, len) => new Uint8Array(wasm.memory.buffer, ptr, len);
+
+	create(N);
+	const n = grid_n();
+
+	const $ = id => document.getElementById(id);
+	const readout = $('readout');
+	let paused = false;
+	let view = 'dye';
+	let boatOn = true;
+	let boat = { x: n * 0.32, y: n * 0.5 };
+
+	function pushParams() {
+		set_params(
+			parseFloat($('visc').value),
+			parseFloat($('vort').value),
+			parseFloat($('fade').value),
+			parseInt($('jacobi').value, 10),
+		);
+		$('viscVal').textContent = $('visc').value;
+		$('vortVal').textContent = $('vort').value;
+		$('fadeVal').textContent = $('fade').value;
+		$('jacobiVal').textContent = $('jacobi').value;
+	}
+	for (const id of ['visc', 'vort', 'fade', 'jacobi'])
+		$(id).addEventListener('input', pushParams);
+	pushParams();
+
+	function placeBoat() {
+		if (boatOn) move_boat(boat.x, boat.y, 0, 0);
+		else clear_boat();
+	}
+	placeBoat();
+
+	// starter swirls so the page is alive on load
+	const palette = [[1,0.25,0.15],[0.2,0.5,1],[0.15,0.9,0.5],[1,0.8,0.2]];
+	palette.forEach(([r,g,b], k) => {
+		const a = k * 1.7;
+		splat(n/2 + Math.cos(a)*22, n/2 + Math.sin(a)*22,
+		      -Math.sin(a)*4, Math.cos(a)*4, r, g, b);
+	});
+	for (let k = 0; k < 20; k++) step();
+
+	// ---- rendering ----
+	function render() {
+		const px = img.data;
+		if (view === 'dye') {
+			const R = f32(dye_r_ptr(), n*n), G = f32(dye_g_ptr(), n*n), B = f32(dye_b_ptr(), n*n);
+			const S = u8(solid_ptr(), n*n);
+			for (let i = 0; i < n*n; i++) {
+				const o = i*4;
+				if (S[i]) { px[o]=38; px[o+1]=52; px[o+2]=70; px[o+3]=255; continue; }
+				// soft filmic-ish tonemap of accumulated dye
+				px[o]   = Math.min(255, 320*R[i] / (1 + 0.6*(R[i]+G[i]+B[i])));
+				px[o+1] = Math.min(255, 320*G[i] / (1 + 0.6*(R[i]+G[i]+B[i])));
+				px[o+2] = Math.min(255, 320*B[i] / (1 + 0.6*(R[i]+G[i]+B[i])));
+				px[o+3] = 255;
+			}
+		} else if (view === 'velocity') {
+			const U = f32(vel_u_ptr(), n*n), V = f32(vel_v_ptr(), n*n);
+			const R = f32(dye_r_ptr(), n*n), G = f32(dye_g_ptr(), n*n), B = f32(dye_b_ptr(), n*n);
+			for (let i = 0; i < n*n; i++) {
+				const o = i*4, sp = Math.hypot(U[i], V[i]);
+				const a = Math.min(1, sp / 6);
+				px[o]   = 20 + 235*a;
+				px[o+1] = 30 + 200*a + 40*Math.min(1,(R[i]+G[i]+B[i])/3);
+				px[o+2] = 60 + 160*a;
+				px[o+3] = 255;
+			}
+		} else { // divergence: red = source, blue = sink
+			const D = f32(div_ptr(), n*n);
+			for (let i = 0; i < n*n; i++) {
+				const o = i*4, d = Math.max(-1, Math.min(1, D[i]*4));
+				px[o]   = d > 0 ? 40 + 215*d : 40;
+				px[o+1] = 40;
+				px[o+2] = d < 0 ? 40 - 215*d : 40;
+				px[o+3] = 255;
+			}
+		}
+		offCtx.putImageData(img, 0, 0);
+		ctx.imageSmoothingEnabled = true;
+		ctx.imageSmoothingQuality = 'high';
+		ctx.drawImage(off, 0, 0, W, H);
+
+		if (view === 'velocity') { // arrow overlay, subsampled
+			const U = f32(vel_u_ptr(), n*n), V = f32(vel_v_ptr(), n*n);
+			const s = W / n, st = 8;
+			ctx.strokeStyle = 'rgba(255,255,255,0.75)';
+			ctx.lineWidth = 1;
+			ctx.beginPath();
+			for (let y = st/2; y < n; y += st) for (let x = st/2; x < n; x += st) {
+				const i = y*n+x, m = Math.min(1, Math.hypot(U[i],V[i])/8);
+				if (m < 0.05) continue;
+				const x0 = x*s, y0 = y*s;
+				ctx.moveTo(x0, y0);
+				ctx.lineTo(x0 + U[i]*s*1.2, y0 + V[i]*s*1.2);
+			}
+			ctx.stroke();
+		}
+	}
+
+	// ---- interaction ----
+	let dragging = null; // 'boat' | 'splat'
+	let last = null, strokeColor = 0, lastBoat = null;
+
+	function toGrid(e) {
+		const r = canvas.getBoundingClientRect();
+		return {
+			x: (e.clientX - r.left) / r.width * n,
+			y: (e.clientY - r.top) / r.height * n,
+		};
+	}
+	canvas.addEventListener('pointerdown', e => {
+		e.preventDefault();
+		canvas.setPointerCapture(e.pointerId);
+		const p = toGrid(e);
+		const dBoat = Math.hypot(p.x - boat.x, p.y - boat.y);
+		if (boatOn && dBoat < 14) {
+			dragging = 'boat';
+			lastBoat = { x: boat.x, y: boat.y };
+		} else {
+			dragging = 'splat';
+			strokeColor = (strokeColor + 1) % palette.length;
+		}
+		last = p;
+	});
+	canvas.addEventListener('pointermove', e => {
+		if (!dragging) return;
+		const p = toGrid(e);
+		if (dragging === 'splat') {
+			const dx = (p.x - last.x) * 1.6, dy = (p.y - last.y) * 1.6;
+			const [r,g,b] = palette[strokeColor];
+			// a still press still injects a little dye
+			splat(p.x, p.y, dx, dy, r, g, b);
+			if (Math.hypot(dx, dy) < 0.2) splat(p.x, p.y, 0, 0, r*0.6, g*0.6, b*0.6);
+		} else {
+			const vx = (p.x - lastBoat.x) * 0.85, vy = (p.y - lastBoat.y) * 0.85;
+			boat.x = Math.max(6, Math.min(n-6, p.x));
+			boat.y = Math.max(6, Math.min(n-6, p.y));
+			move_boat(boat.x, boat.y, vx, vy);
+			lastBoat = { x: p.x, y: p.y };
+		}
+		last = p;
+	});
+	const endDrag = e => {
+		if (dragging === 'boat') move_boat(boat.x, boat.y, 0, 0); // release: stop
+		dragging = null;
+	};
+	canvas.addEventListener('pointerup', endDrag);
+	canvas.addEventListener('pointercancel', endDrag);
+
+	// ---- controls ----
+	$('pauseBtn').addEventListener('click', () => {
+		paused = !paused;
+		$('pauseBtn').textContent = paused ? 'Resume' : 'Pause';
+		$('stepBtn').disabled = !paused;
+	});
+	$('stepBtn').addEventListener('click', () => { step(); render(); });
+	$('resetBtn').addEventListener('click', () => {
+		create(n); pushParams();
+		boat = { x: n*0.32, y: n*0.5 };
+		placeBoat();
+	});
+	$('boatBtn').addEventListener('click', () => {
+		boatOn = !boatOn;
+		$('boatBtn').textContent = 'Boat: ' + (boatOn ? 'on' : 'off');
+		$('boatBtn').setAttribute('aria-pressed', boatOn);
+		placeBoat();
+	});
+	document.querySelectorAll('.viewbtn').forEach(b => b.addEventListener('click', () => {
+		view = b.dataset.view;
+		document.querySelectorAll('.viewbtn').forEach(x =>
+			x.setAttribute('aria-pressed', x === b));
+	}));
+
+	// ---- main loop ----
+	let frames = 0, lastT = performance.now(), fps = 0, solverMs = 0;
+	function loop() {
+		const t0 = performance.now();
+		if (!paused) step();
+		solverMs = solverMs*0.9 + (performance.now()-t0)*0.1;
+		render();
+		frames++;
+		const now = performance.now();
+		if (now - lastT > 500) {
+			fps = Math.round(frames * 1000 / (now - lastT));
+			frames = 0; lastT = now;
+			readout.textContent =
+				`fps ${fps} · solver ${solverMs.toFixed(2)} ms/frame · ` +
+				`max div ${max_divergence().toFixed(4)}`;
+		}
+		requestAnimationFrame(loop);
+	}
+	render();
+	requestAnimationFrame(loop);
+</script>
+</body>
+</html>

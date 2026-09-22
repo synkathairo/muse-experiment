@@ -1,0 +1,3 @@
+# Rust build artifacts (same as `cargo new` generates)
+/target
+Cargo.lock

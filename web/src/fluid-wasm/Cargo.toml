@@ -1,0 +1,22 @@
+# fluid-wasm: WebAssembly bindings for the fluid-sim demo.
+#
+# Thin wasm-bindgen layer over ../../../fluid-sim (path dependency, no crates).
+# The boundary is stateful by design: the page owns one Fluid behind a Mutex
+# (wasm32 is single-threaded; the Mutex is just the simplest safe static).
+# All numerics live in fluid-sim; this crate only marshals parameters and
+# exposes raw buffer pointers for the canvas renderer.
+#
+[package.metadata.wasm-pack.profile.release]
+wasm-opt = false  # skip binaryen download; toy-sized output is fine as-is
+
+[package]
+name = "fluid-wasm"
+version = "0.1.0"
+edition = "2021"
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+fluid-sim = { path = "../../../fluid-sim" }
+wasm-bindgen = "0.2"

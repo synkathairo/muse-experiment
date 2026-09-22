@@ -9,4 +9,6 @@ __pycache__/
 
 # wasm-pack build output (built in CI, never committed)
 web/site/demos/zk/pkg/
+web/site/demos/fluid/pkg/
 web/src/zk-wasm/target/
+web/src/fluid-wasm/target/

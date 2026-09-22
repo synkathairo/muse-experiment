@@ -1,0 +1,13 @@
+[package]
+name = "fluid-sim"
+version = "0.1.0"
+edition = "2021"
+description = "A from-scratch educational 2D incompressible fluid solver (Stam stable fluids): semi-Lagrangian advection + Jacobi pressure projection, no dependencies"
+
+[lib]
+name = "fluid_sim"
+path = "src/lib.rs"
+
+[[bin]]
+name = "fluid-sim-demo"
+path = "src/main.rs"
