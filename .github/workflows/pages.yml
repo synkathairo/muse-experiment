@@ -7,6 +7,7 @@ on:
       - 'web/site/**'
       - 'web/src/**'
       - 'fluid-sim/**'
+      - 'audio-dsp/**'
       - '.github/workflows/pages.yml'
 
 permissions:
@@ -35,6 +36,10 @@ jobs:
       - name: Build fluid WASM demo
         run: wasm-pack build --target web --out-dir ../../site/demos/fluid/pkg
         working-directory: web/src/fluid-wasm
+
+      - name: Build audio WASM demo
+        run: wasm-pack build --target web --out-dir ../../site/demos/audio/pkg
+        working-directory: web/src/audio-wasm
 
       - uses: actions/upload-pages-artifact@v3
         with:

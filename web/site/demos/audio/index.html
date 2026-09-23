@@ -1,0 +1,541 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+	<meta charset="UTF-8">
+	<meta name="viewport" content="width=device-width, initial-scale=1.0">
+	<link rel="stylesheet" href="/assets/css/styles.css" />
+	<title>audio lab — hear the DSP</title>
+	<style>
+		#lab { max-width: 720px; }
+		canvas.scope { display: block; width: 100%; border-radius: 8px;
+		               background: #06121f; margin: 0.4em 0; }
+		#panel .row { display: flex; flex-wrap: wrap; gap: 0.9em; align-items: center;
+		              margin: 0.55em 0; }
+		#panel label { font-size: 0.9em; white-space: nowrap; }
+		#panel input[type=range] { width: 120px; vertical-align: middle; }
+		#panel select { font-size: 0.9em; }
+		.val { font-family: monospace; font-size: 0.85em; min-width: 4.5em;
+		       display: inline-block; }
+		button { margin-right: 0.4em; }
+		button[aria-pressed=true] { font-weight: bold; }
+		#tuner { display: flex; align-items: center; gap: 1em; margin: 0.6em 0; }
+		#noteName { font-size: 2.6em; font-weight: bold; font-family: monospace;
+		            min-width: 2.2em; text-align: center; }
+		#noteCents { font-family: monospace; font-size: 0.9em; color: #555; }
+		#needle { border-radius: 8px; background: #06121f; }
+		.explain h3 { margin-bottom: 0.2em; }
+		.explain p { margin-top: 0.3em; }
+		.explain code { font-size: 0.9em; }
+		.hint { font-size: 0.85em; color: #555; }
+	</style>
+</head>
+<body>
+<div id="lab">
+<h1>Audio lab: hear the DSP</h1>
+<p>
+	A real-time audio playground running <em>in your browser</em> via WebAssembly,
+	compiled from the
+	<a href="https://github.com/synkathairo/muse-experiment/tree/main/audio-dsp">audio-dsp</a>
+	Rust crate — a hand-rolled FFT, a seven-type biquad filter bank, and YIN pitch
+	detection. The browser only does I/O (mic, file decoding, playback);
+	<strong>every sample of math runs in Rust</strong>, and the same crate
+	compiles to native targets unchanged.
+</p>
+
+<div id="panel">
+	<div class="row">
+		<span>Input:</span>
+		<button id="micBtn">🎤 Mic</button>
+		<button id="toneBtn" aria-pressed="true">🎵 Tone</button>
+		<button id="fileBtn">📁 Upload</button>
+		<input type="file" id="fileInput" accept="audio/*" style="display:none">
+		<label class="hint" id="fileName"></label>
+	</div>
+	<div class="row" id="toneRow">
+		<label>Tone <input type="range" id="toneFreq" min="0" max="1" step="0.001" value="0.5"></label>
+		<span class="val" id="toneFreqVal">440 Hz</span>
+		<label><input type="checkbox" id="fileLoop" checked> loop file</label>
+	</div>
+	<div class="row">
+		<label><input type="checkbox" id="monitor"> monitor (hear the filtered output)</label>
+		<label>Out gain <input type="range" id="outGain" min="0" max="1" step="0.01" value="0.8"></label>
+		<span class="val" id="outGainVal">0.80</span>
+	</div>
+	<p class="hint" id="status">Press an input button to start (browser needs a gesture for audio).</p>
+</div>
+
+<h3>Waveform <span class="hint">— scrolling; <span style="color:#8fa9c4">gray = raw in</span>, <span style="color:#4fd1c5">teal = filtered out</span></span></h3>
+<canvas id="wave" class="scope" width="720" height="160"></canvas>
+<h3>Spectrum <span class="hint">— dB per frequency, log axis</span></h3>
+<canvas id="spec" class="scope" width="720" height="200"></canvas>
+
+<div id="panel">
+	<h3>Filter</h3>
+	<div class="row">
+		<label>Type
+			<select id="fType">
+				<option value="lowpass" selected>low-pass</option>
+				<option value="highpass">high-pass</option>
+				<option value="bandpass">band-pass</option>
+				<option value="notch">notch</option>
+				<option value="peaking">peaking EQ</option>
+				<option value="lowshelf">low-shelf</option>
+				<option value="highshelf">high-shelf</option>
+			</select>
+		</label>
+		<label><input type="checkbox" id="fBypass"> bypass</label>
+	</div>
+	<div class="row">
+		<label>Freq <input type="range" id="fFreq" min="0" max="1" step="0.001" value="0.5"></label>
+		<span class="val" id="fFreqVal"></span>
+		<label>Q <input type="range" id="fQ" min="0.2" max="10" step="0.1" value="0.7"></label>
+		<span class="val" id="fQVal">0.7</span>
+		<label>Gain <input type="range" id="fGain" min="-24" max="24" step="0.5" value="0"></label>
+		<span class="val" id="fGainVal">0 dB</span>
+	</div>
+	<p class="hint">Gain only applies to peaking and shelf filters. Try: low-pass at
+		200 Hz on the tone, then sweep the frequency up and watch the spectrum's
+		right side come alive.</p>
+</div>
+
+<div id="tunerWrap">
+	<h3>Tuner <span class="hint">— YIN pitch detection on the raw input</span></h3>
+	<div id="tuner">
+		<div id="noteName">–</div>
+		<canvas id="needle" width="280" height="64"></canvas>
+		<div id="noteCents"></div>
+	</div>
+</div>
+
+<div class="explain">
+	<h2>What's going on</h2>
+	<h3>Two views of one signal</h3>
+	<p>The waveform is amplitude over time — the raw input in gray, the
+		filtered output in teal, drawn on top. Bypass the filter and they sit
+		exactly on top of each other; engage a low-pass and you watch the teal
+		trace go smooth while the gray keeps buzzing. The spectrum is the
+		<em>filtered</em> signal through a Fourier transform: energy per
+		frequency, via a hand-rolled radix-2 FFT with a Hann window (which
+		tames spectral leakage at the cost of slightly fattening each peak).
+		Two domains, one cause.</p>
+	<h3>Filters</h3>
+	<p>Each filter is a biquad — a second-order IIR section with five
+		coefficients computed from the RBJ Audio EQ Cookbook. Seven types cover
+		every distinct thing a filter can do to a spectrum: remove above
+		(low-pass), remove below (high-pass), keep a slice (band-pass), kill a
+		slice (notch), boost/cut a slice (peaking), tilt the bass (low-shelf) or
+		treble (high-shelf). Q controls how narrow the slice is.</p>
+	<h3>Pitch, not peaks</h3>
+	<p>The tuner doesn't pick the tallest FFT bin — on a guitar string that's
+		usually a harmonic, and you'd be told you're an octave sharp. Instead it
+		uses the YIN algorithm, which measures <em>periodicity</em> in the time
+		domain: the lag at which the signal best predicts itself. Frequency then
+		maps to the nearest note in 12-tone equal temperament (A4 = 440 Hz),
+		with cents telling you which way to turn the peg.</p>
+	<h3>The Rust core</h3>
+	<p><code>fft.rs</code>, <code>filter.rs</code>, <code>pitch.rs</code>,
+		<code>note.rs</code> — no dependencies, sample rate always a parameter,
+		unit-tested sample by sample. The page is a thin shell; the crate builds
+		for native targets unchanged.</p>
+	<h3>Further reading</h3>
+	<ul>
+		<li><a href="https://github.com/synkathairo/muse-experiment/tree/main/audio-dsp">audio-dsp source</a></li>
+		<li>RBJ Audio EQ Cookbook (biquad coefficients)</li>
+		<li>de Cheveigné &amp; Kawahara (2002), "YIN, a fundamental frequency estimator for speech and music"</li>
+	</ul>
+</div>
+
+<p><a href="../index.html">← demos</a> · <a href="/index.html">← home</a></p>
+</div>
+
+<script type="module">
+import init, { Lab, spectrum_db, pitch_json } from './pkg/audio_wasm.js';
+
+const N = 2048;               // analysis window: FFT + YIN (must be power of two)
+const RING = 16384;           // continuous sample history, raw and filtered
+const WAVE_LEN = 8192;        // scrolling waveform window (<= RING)
+
+await init();
+
+const $ = id => document.getElementById(id);
+const waveC = $('wave'), specC = $('spec'), needleC = $('needle');
+const waveCtx = waveC.getContext('2d'), specCtx = specC.getContext('2d'),
+      needleCtx = needleC.getContext('2d');
+
+// ---------- state ----------
+// The DSP sees one continuous stream per source: each animation frame we
+// produce exactly the samples elapsed since the last frame, filter them,
+// and append them to ring buffers. Feeding the stateful IIR filter
+// overlapping windows (the naive rAF approach) would filter samples twice,
+// so honest block boundaries are the whole point of this plumbing.
+let actx = null, analyser = null, micStream = null;
+let lab = null, srcRate = 48000;
+let source = 'tone';          // 'mic' | 'tone' | 'file'
+let tonePhase = 0, toneFreq = 440, toneLastT = 0;
+let fileData = null, fileRate = 44100, fileStartCtxTime = 0, fileOffsetSec = 0, fileLastIdx = 0;
+let micLastT = 0;
+const rawRing = new Float32Array(RING), filtRing = new Float32Array(RING);
+let rawPos = 0, filtPos = 0;
+let monitorOn = false, nextPlayTime = 0, outGain = 0.8;
+const playQueue = [];         // filtered chunks awaiting scheduled playback
+let frame = 0;
+
+const status = t => { $('status').textContent = t; };
+const logFreq = v => Math.round(20 * Math.pow(1000, v));   // slider 0..1 -> 20..20000 Hz
+
+function ensureCtx() {
+	if (!actx) actx = new (window.AudioContext || window.webkitAudioContext)();
+	if (actx.state === 'suspended') actx.resume();
+	return actx;
+}
+
+function useSampleRate(sr) {
+	if (!lab || Math.abs(sr - srcRate) > 1) {
+		srcRate = sr;
+		lab = new Lab(sr);
+		applyFilter();
+	}
+	nextPlayTime = 0;
+	playQueue.length = 0;
+}
+
+function clearRings() {
+	rawRing.fill(0); filtRing.fill(0);
+	rawPos = 0; filtPos = 0;
+}
+
+function ringAppend(ring, pos, chunk) {
+	for (let i = 0; i < chunk.length; i++) { ring[pos] = chunk[i]; pos = (pos + 1) % RING; }
+	return pos;
+}
+
+// copy the newest `n` samples (oldest -> newest) into `out`
+function ringLast(ring, pos, out, n) {
+	let p = (((pos - n) % RING) + RING) % RING;
+	for (let i = 0; i < n; i++) { out[i] = ring[p]; p = (p + 1) % RING; }
+}
+
+// ---------- inputs ----------
+async function startMic() {
+	try {
+		ensureCtx();
+		micStream = await navigator.mediaDevices.getUserMedia({
+			audio: { echoCancellation: false, noiseSuppression: false, autoGainControl: false }
+		});
+		const src = actx.createMediaStreamSource(micStream);
+		analyser = actx.createAnalyser();
+		analyser.fftSize = N;
+		src.connect(analyser);           // never to destination: no feedback
+		useSampleRate(actx.sampleRate);
+		lab.reset();
+		clearRings();
+		micLastT = actx.currentTime;
+		source = 'mic';
+		status('Mic live. Speak, hum, or clap — watch both views.');
+	} catch (e) {
+		status('Mic blocked: ' + e.message);
+	}
+}
+
+function startTone() {
+	// No AudioContext needed: the tone is synthesized straight into the
+	// sample buffer. (The context is only created for mic/monitor/file.)
+	useSampleRate(actx ? actx.sampleRate : 48000);
+	lab.reset();
+	clearRings();
+	toneLastT = performance.now() / 1000;
+	source = 'tone';
+	status('Tone generator. Slide the frequency, then mangle it with filters.');
+}
+
+$('fileInput').addEventListener('change', async ev => {
+	const f = ev.target.files[0];
+	if (!f) return;
+	ensureCtx();
+	const buf = await f.arrayBuffer();
+	try {
+		const ab = await actx.decodeAudioData(buf);
+		fileData = ab.getChannelData(0);
+		fileRate = ab.sampleRate;
+		fileOffsetSec = 0;
+		fileStartCtxTime = actx.currentTime;
+		fileLastIdx = 0;
+		useSampleRate(fileRate);
+		lab.reset();
+		clearRings();
+		source = 'file';
+		$('fileName').textContent = f.name;
+		status('"' + f.name + '" decoded — running through the Rust DSP. Enable monitor to hear it.');
+	} catch (e) {
+		status('Could not decode that file: ' + e.message);
+	}
+});
+
+function setSource(s) {
+	for (const [id, name] of [['micBtn','mic'],['toneBtn','tone'],['fileBtn','file']])
+		$(id).setAttribute('aria-pressed', name === s ? 'true' : 'false');
+	if (s === 'mic') startMic();
+	else if (s === 'tone') startTone();
+	else $('fileInput').click();
+}
+$('micBtn').onclick = () => setSource('mic');
+$('toneBtn').onclick = () => setSource('tone');
+$('fileBtn').onclick = () => setSource('file');
+
+// ---------- per-frame sample production: exactly the new samples ----------
+// Returns a Float32Array (possibly empty) of fresh, non-overlapping samples.
+const micBuf = new Float32Array(N);
+
+function produceBlock() {
+	if (source === 'mic' && analyser) {
+		const ns = Math.max(0, Math.min(N, Math.round((actx.currentTime - micLastT) * srcRate)));
+		micLastT = actx.currentTime;
+		analyser.getFloatTimeDomainData(micBuf);
+		return micBuf.slice(N - ns);          // newest ns samples; empty if ns == 0
+	}
+	if (source === 'file' && fileData) {
+		const posSec = fileOffsetSec + (actx.currentTime - fileStartCtxTime);
+		const idx = Math.floor(posSec * fileRate);
+		if (idx >= fileData.length) {
+			if ($('fileLoop').checked) {
+				fileOffsetSec = 0; fileStartCtxTime = actx.currentTime;
+				fileLastIdx = 0;
+			} else {
+				fileLastIdx = fileData.length;
+			}
+			return new Float32Array(0);
+		}
+		const ns = Math.max(0, idx - fileLastIdx);
+		const chunk = new Float32Array(ns);
+		for (let i = 0; i < ns; i++)
+			chunk[i] = (fileLastIdx + i < fileData.length) ? fileData[fileLastIdx + i] : 0;
+		fileLastIdx = idx;
+		return chunk;
+	}
+	if (source === 'tone') {
+		const now = performance.now() / 1000;
+		// cap catch-up so a backgrounded tab doesn't synthesize minutes at once
+		const ns = Math.max(0, Math.min(4 * N, Math.round((now - toneLastT) * srcRate)));
+		toneLastT = now;
+		const chunk = new Float32Array(ns);
+		const inc = 2 * Math.PI * toneFreq / srcRate;
+		for (let i = 0; i < ns; i++) { chunk[i] = 0.6 * Math.sin(tonePhase); tonePhase += inc; }
+		if (tonePhase > 1e9) tonePhase %= (2 * Math.PI);
+		return chunk;
+	}
+	return new Float32Array(0);
+}
+
+// ---------- filter panel ----------
+function applyFilter() {
+	if (!lab) return;
+	if ($('fBypass').checked) { lab.clear_filters(); return; }
+	lab.set_filter($('fType').value,
+		logFreq(parseFloat($('fFreq').value)),
+		parseFloat($('fQ').value),
+		parseFloat($('fGain').value));
+}
+for (const id of ['fType','fFreq','fQ','fGain','fBypass']) {
+	$(id).addEventListener('input', () => {
+		$('fFreqVal').textContent = logFreq(parseFloat($('fFreq').value)) + ' Hz';
+		$('fQVal').textContent = parseFloat($('fQ').value).toFixed(1);
+		$('fGainVal').textContent = parseFloat($('fGain').value).toFixed(1) + ' dB';
+		$('fGain').disabled = !['peaking','lowshelf','highshelf'].includes($('fType').value);
+		applyFilter();
+	});
+}
+$('fGain').disabled = true;
+$('fFreqVal').textContent = logFreq(0.5) + ' Hz';
+
+$('toneFreq').addEventListener('input', () => {
+	// log map 55..880 Hz; slider 0.75 lands on 440
+	toneFreq = Math.round(55 * Math.pow(16, parseFloat($('toneFreq').value)));
+	$('toneFreqVal').textContent = toneFreq + ' Hz';
+});
+toneFreq = 440;
+$('toneFreq').value = 0.75;
+$('toneFreqVal').textContent = toneFreq + ' Hz';
+
+$('monitor').addEventListener('change', e => {
+	monitorOn = e.target.checked;
+	if (monitorOn) ensureCtx();   // playback only; never touch srcRate here —
+	playQueue.length = 0;        // buffers are created at the source rate and
+	nextPlayTime = 0;            // the context resamples automatically
+});
+$('outGain').addEventListener('input', e => {
+	outGain = parseFloat(e.target.value);
+	$('outGainVal').textContent = outGain.toFixed(2);
+});
+
+// ---------- monitor playback: schedule the exact filtered stream ----------
+function schedulePlayback() {
+	if (!monitorOn || !actx || playQueue.length === 0) return;
+	const sr = srcRate;
+	if (nextPlayTime < actx.currentTime - 0.1) nextPlayTime = actx.currentTime + 0.05;
+	// keep ~0.25 s queued, merged into modestly-sized buffers
+	while (playQueue.length && nextPlayTime < actx.currentTime + 0.25) {
+		let total = 0;
+		for (const c of playQueue) { total += c.length; if (total >= 4096) break; }
+		const size = Math.min(total, 4096);
+		const buf = actx.createBuffer(1, size, sr);
+		const ch = buf.getChannelData(0);
+		let off = 0;
+		while (off < size && playQueue.length) {
+			const c = playQueue[0];
+			const take = Math.min(c.length, size - off);
+			for (let i = 0; i < take; i++) ch[off + i] = c[i] * outGain;
+			off += take;
+			if (take === c.length) playQueue.shift();
+			else playQueue[0] = c.slice(take);
+		}
+		const src = actx.createBufferSource();
+		src.buffer = buf;
+		src.connect(actx.destination);
+		src.start(nextPlayTime);
+		nextPlayTime += size / sr;
+	}
+	// if we fell badly behind (hidden tab), drop stale audio rather than burst it
+	if (playQueue.length > 64) playQueue.splice(0, playQueue.length - 64);
+}
+
+// ---------- drawing ----------
+const waveRaw = new Float32Array(WAVE_LEN), waveFilt = new Float32Array(WAVE_LEN);
+
+function strokeWave(data, color, width) {
+	const w = waveC.width, h = waveC.height, mid = h / 2;
+	waveCtx.strokeStyle = color;
+	waveCtx.lineWidth = width;
+	waveCtx.beginPath();
+	for (let px = 0; px < w; px++) {
+		const y = mid - data[Math.floor(px / w * WAVE_LEN)] * mid * 0.95;
+		px === 0 ? waveCtx.moveTo(px, y) : waveCtx.lineTo(px, y);
+	}
+	waveCtx.stroke();
+	waveCtx.lineWidth = 1;
+}
+
+function drawWave() {
+	ringLast(rawRing, rawPos, waveRaw, WAVE_LEN);
+	ringLast(filtRing, filtPos, waveFilt, WAVE_LEN);
+	const w = waveC.width, h = waveC.height, mid = h / 2;
+	waveCtx.fillStyle = '#06121f';
+	waveCtx.fillRect(0, 0, w, h);
+	waveCtx.strokeStyle = '#1d3a5f';
+	waveCtx.beginPath(); waveCtx.moveTo(0, mid + .5); waveCtx.lineTo(w, mid + .5); waveCtx.stroke();
+	strokeWave(waveRaw, '#5b7a99', 1);      // raw input, underneath
+	strokeWave(waveFilt, '#4fd1c5', 1.5);   // filtered output, on top
+}
+
+const SPEC_MIN = -110, SPEC_MAX = 6;
+function drawSpec(bins) {
+	const w = specC.width, h = specC.height;
+	const fMax = Math.min(20000, srcRate / 2);
+	const xOf = f => w * Math.log(f / 20) / Math.log(fMax / 20);
+	const yOf = db => h * (1 - (db - SPEC_MIN) / (SPEC_MAX - SPEC_MIN));
+	specCtx.fillStyle = '#06121f';
+	specCtx.fillRect(0, 0, w, h);
+	// gridlines at octaves-ish landmarks
+	specCtx.strokeStyle = '#16324f';
+	specCtx.fillStyle = '#3b6a94';
+	specCtx.font = '10px monospace';
+	for (const f of [50, 100, 200, 500, 1000, 2000, 5000, 10000]) {
+		if (f >= fMax) break;
+		const x = xOf(f);
+		specCtx.beginPath(); specCtx.moveTo(x, 0); specCtx.lineTo(x, h); specCtx.stroke();
+		specCtx.fillText(f >= 1000 ? (f/1000)+'k' : f, x + 3, h - 5);
+	}
+	// curve
+	const grad = specCtx.createLinearGradient(0, 0, 0, h);
+	grad.addColorStop(0, 'rgba(79,209,197,0.85)');
+	grad.addColorStop(1, 'rgba(79,209,197,0.08)');
+	specCtx.beginPath();
+	specCtx.moveTo(0, h);
+	const binHz = srcRate / N;
+	for (let px = 0; px <= w; px++) {
+		const f = 20 * Math.pow(fMax / 20, px / w);
+		const b = Math.min(bins.length - 1, Math.max(0, Math.round(f / binHz)));
+		specCtx.lineTo(px, yOf(Math.max(SPEC_MIN, Math.min(SPEC_MAX, bins[b]))));
+	}
+	specCtx.lineTo(w, h);
+	specCtx.closePath();
+	specCtx.fillStyle = grad;
+	specCtx.fill();
+}
+
+function drawNeedle(cents) {
+	const w = needleC.width, h = needleC.height, cx = w / 2;
+	needleCtx.fillStyle = '#06121f';
+	needleCtx.fillRect(0, 0, w, h);
+	// green in-tune zone ±6 cents
+	needleCtx.fillStyle = 'rgba(72,187,120,0.35)';
+	needleCtx.fillRect(cx - w * 6 / 100, 8, w * 12 / 100, h - 16);
+	needleCtx.strokeStyle = '#3b6a94';
+	needleCtx.fillStyle = '#8fa9c4';
+	needleCtx.font = '10px monospace';
+	for (const c of [-50, -25, 0, 25, 50]) {
+		const x = cx + c / 50 * (w / 2 - 8);
+		needleCtx.beginPath(); needleCtx.moveTo(x, h - 18); needleCtx.lineTo(x, h - 8); needleCtx.stroke();
+		needleCtx.fillText((c > 0 ? '+' : '') + c, x - 8, h - 20);
+	}
+	if (cents !== null) {
+		const x = cx + Math.max(-50, Math.min(50, cents)) / 50 * (w / 2 - 8);
+		needleCtx.strokeStyle = '#f6ad55';
+		needleCtx.lineWidth = 3;
+		needleCtx.beginPath(); needleCtx.moveTo(x, 6); needleCtx.lineTo(x, h - 6); needleCtx.stroke();
+		needleCtx.lineWidth = 1;
+	}
+}
+
+// ---------- main loop ----------
+const specIn = new Float32Array(N);
+const yinIn = new Float32Array(N);
+
+function tick() {
+	requestAnimationFrame(tick);
+	if (!lab) return;
+	frame++;
+
+	const chunk = produceBlock();
+	if (chunk.length > 0) {
+		rawPos = ringAppend(rawRing, rawPos, chunk);
+		const filtered = lab.process(chunk);   // fresh Float32Array, same length
+		filtPos = ringAppend(filtRing, filtPos, filtered);
+		if (monitorOn) playQueue.push(filtered);
+	}
+
+	drawWave();
+
+	// spectrum of the filtered signal, newest N samples
+	ringLast(filtRing, filtPos, specIn, N);
+	drawSpec(spectrum_db(specIn));
+
+	// tuner on the raw input, ~10x/sec
+	if (frame % 6 === 0) {
+		ringLast(rawRing, rawPos, yinIn, N);
+		try {
+			const p = JSON.parse(pitch_json(yinIn, srcRate));
+			if (p.freq) {
+				$('noteName').textContent = p.note;
+				$('noteCents').textContent =
+					p.freq.toFixed(1) + ' Hz · ' +
+					(p.cents >= 0 ? '+' : '') + p.cents.toFixed(1) + '¢';
+				drawNeedle(p.cents);
+			} else {
+				$('noteName').textContent = '–';
+				$('noteCents').textContent = '';
+				drawNeedle(null);
+			}
+		} catch (e) { /* ignore malformed frame */ }
+	}
+
+	schedulePlayback();
+}
+
+useSampleRate(48000);
+setSource('tone');
+$('toneBtn').setAttribute('aria-pressed', 'true');
+tick();
+
+</script>
+</body>
+</html>

@@ -1,0 +1,27 @@
+# audio-wasm: WebAssembly bindings for the audio-dsp crate.
+#
+# Thin wasm-bindgen layer over ../../../audio-dsp (path dependency).
+# The boundary is deliberately narrow:
+#   - `Lab`: stateful filter chain (samples in, filtered samples out)
+#   - `spectrum_db`: dB magnitude spectrum as a Float32Array (no JSON overhead per frame)
+#   - `pitch_json`: YIN pitch estimate + note mapping as JSON (called ~10x/sec)
+#
+# Sample flow on the page: Web Audio does I/O only (mic capture, file decode,
+# tone gen, playback); every DSP operation runs here.
+
+[package.metadata.wasm-pack.profile.release]
+wasm-opt = false  # skip binaryen download; toy-sized output is fine as-is
+
+[package]
+name = "audio-wasm"
+version = "0.1.0"
+edition = "2021"
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+audio-dsp = { path = "../../../audio-dsp" }
+wasm-bindgen = "0.2"
+js-sys = "0.3"
+serde_json = "1"

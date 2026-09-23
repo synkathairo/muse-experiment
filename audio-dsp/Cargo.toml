@@ -1,0 +1,9 @@
+[package]
+name = "audio-dsp"
+version = "0.1.0"
+edition = "2021"
+description = "From-scratch educational audio DSP: FFT, biquad filter bank, YIN pitch detection, note mapping. No dependencies."
+
+[lib]
+name = "audio_dsp"
+path = "src/lib.rs"
