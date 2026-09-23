@@ -272,6 +272,13 @@ $('fileInput').addEventListener('change', async ev => {
 });
 
 function setSource(s) {
+	// Release the mic when leaving it: otherwise the capture indicator
+	// stays on and the stream keeps running in the background.
+	if (micStream && s !== 'mic') {
+		micStream.getTracks().forEach(t => t.stop());
+		micStream = null;
+		analyser = null;
+	}
 	for (const [id, name] of [['micBtn','mic'],['toneBtn','tone'],['fileBtn','file']])
 		$(id).setAttribute('aria-pressed', name === s ? 'true' : 'false');
 	if (s === 'mic') startMic();

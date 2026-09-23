@@ -112,7 +112,9 @@ mod tests {
     fn impulse_gives_flat_spectrum() {
         let n = 256;
         let mut x = vec![0.0f32; n];
-        x[0] = 1.0;
+        // NB: at n/2, not 0 — the Hann window is exactly 0 at the endpoints,
+        // so an impulse at index 0 would test nothing but the -240 dB floor.
+        x[n / 2] = 1.0;
         let spec = spectrum_db(&x);
         assert_eq!(spec.len(), n / 2);
         let (min, max) = spec
