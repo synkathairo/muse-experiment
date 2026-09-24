@@ -94,15 +94,22 @@ def main():
 
     print("fetching 9x9 ladder members...", flush=True)
     seeds = []
-    url = (f"{API}/api/v1/ladders/{LADDER_9X9}/players/?format=json"
-           f"&page_size=100&ordering=rank")
-    while url and len(seeds) < args.seed_ladder_size:
-        d = api_get(url, args.delay)
-        for row in d["results"]:
+    page = 1
+    # NOTE: this endpoint caps page_size at 50 and omits the `next` URL,
+    # so paginate manually with ?page=N.
+    while len(seeds) < args.seed_ladder_size:
+        d = api_get(f"{API}/api/v1/ladders/{LADDER_9X9}/players/?format=json"
+                    f"&page_size=50&page={page}", args.delay)
+        rows = d["results"]
+        if not rows:
+            break
+        for row in rows:
             seeds.append(row["player"]["id"])
             if len(seeds) >= args.seed_ladder_size:
                 break
-        url = d.get("next")
+        if len(rows) < 50:
+            break
+        page += 1
     print(f"{len(seeds)} seed players", flush=True)
 
     queue = list(seeds)
@@ -123,6 +130,12 @@ def main():
                         continue
                     if not g.get("ranked"):
                         continue
+                    if not g.get("ended"):
+                        continue  # in progress: SGF needs auth
+                    if g.get("annulled"):
+                        continue
+                    if (g.get("outcome") or "") in ("Cancellation",):
+                        continue
                     bp, wp = g["players"]["black"], g["players"]["white"]
                     if is_bot(bp) or is_bot(wp):
                         continue
@@ -131,6 +144,7 @@ def main():
                         "id": gid,
                         "black": g.get("black"), "white": g.get("white"),
                         "rules": g.get("rules"), "handicap": g.get("handicap"),
+                        "outcome": g.get("outcome"), "ended": g.get("ended"),
                     }) + "\n")
                     for oid in (g.get("black"), g.get("white")):
                         if oid and oid not in seen_players and len(seen_players) < args.max_players * 4:
