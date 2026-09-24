@@ -32,6 +32,13 @@ def sgf_point(s, size):
     return None  # e.g. 'tt' on 9x9, or ''
 
 
+def _unquote(v):
+    """OGS sometimes wraps whole values in single quotes: RE['B+2.5']."""
+    if len(v) >= 2 and v[0] == v[-1] and v[0] in ("'", '"'):
+        return v[1:-1]
+    return v
+
+
 class _Parser:
     def __init__(self, text):
         self.s = text
@@ -54,12 +61,19 @@ class _Parser:
         trees = []
         while self.peek() == "(":
             self.i += 1
-            trees.append(self._parse_tree())
+            seq, _ = self._parse_tree()
+            trees.append(seq)
         return trees
 
     def _parse_tree(self):
-        """Parse one game tree; returns the main-line node sequence."""
+        """Parse one game tree; returns (main-line nodes, is_unbranched_chain).
+
+        OGS writes the main line as nested single-node "variations"
+        (;W[gd](;B[fc](;W[gc]...))); a variation that is itself an unbranched
+        chain is spliced into the main line, real branches are ignored.
+        """
         seq = []
+        variations = []
         while True:
             c = self.peek()
             if c == ";":
@@ -67,7 +81,7 @@ class _Parser:
                 seq.append(self._parse_node())
             elif c == "(":
                 self.i += 1
-                self._skip_tree()  # variation: ignore, keep main line
+                variations.append(self._parse_tree())
             elif c == ")":
                 self.i += 1
                 break
@@ -75,33 +89,12 @@ class _Parser:
                 break
             else:
                 self.i += 1  # tolerate stray chars
-        return seq
-
-    def _skip_tree(self):
-        depth = 1
-        while self.i < self.n and depth:
-            c = self.s[self.i]
-            if c == "\\":
-                self.i += 2
-            elif c == "[":
-                # skip property value with escapes
-                self.i += 1
-                while self.i < self.n:
-                    if self.s[self.i] == "\\":
-                        self.i += 2
-                    elif self.s[self.i] == "]":
-                        self.i += 1
-                        break
-                    else:
-                        self.i += 1
-            elif c == "(":
-                depth += 1
-                self.i += 1
-            elif c == ")":
-                depth -= 1
-                self.i += 1
-            else:
-                self.i += 1
+        if len(variations) == 1:
+            sub_seq, sub_chain = variations[0]
+            if sub_chain:
+                seq.extend(sub_seq)
+                return seq, True
+        return seq, not variations
 
     def _parse_node(self):
         props = {}
@@ -130,7 +123,7 @@ class _Parser:
                             else:
                                 buf.append(ch)
                                 self.i += 1
-                        vals.append("".join(buf))
+                        vals.append(_unquote("".join(buf)))
                     else:
                         break
                 props[ident] = vals

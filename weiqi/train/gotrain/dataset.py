@@ -115,19 +115,20 @@ class ChunkWriter:
 
 
 def concat_chunks(chunk_paths, out_dir, split):
-    """Concatenate chunk npzs into final memmap-written .npy files."""
+    """Concatenate chunk npzs into final .npy files (proper format, mmap-able)."""
+    from numpy.lib.format import open_memmap
     total = 0
     for p in chunk_paths:
         with np.load(p) as d:
             total += d["y"].shape[0]
-    X = np.memmap(os.path.join(out_dir, f"{split}_x.npy"), dtype=np.float32,
-                  mode="w+", shape=(total, 6, 9, 9))
-    y = np.memmap(os.path.join(out_dir, f"{split}_y.npy"), dtype=np.int64,
-                  mode="w+", shape=(total,))
-    z = np.memmap(os.path.join(out_dir, f"{split}_z.npy"), dtype=np.float32,
-                  mode="w+", shape=(total,))
-    zm = np.memmap(os.path.join(out_dir, f"{split}_zm.npy"), dtype=np.float32,
-                   mode="w+", shape=(total,))
+    X = open_memmap(os.path.join(out_dir, f"{split}_x.npy"), dtype=np.float32,
+                    mode="w+", shape=(total, 6, 9, 9))
+    y = open_memmap(os.path.join(out_dir, f"{split}_y.npy"), dtype=np.int64,
+                    mode="w+", shape=(total,))
+    z = open_memmap(os.path.join(out_dir, f"{split}_z.npy"), dtype=np.float32,
+                    mode="w+", shape=(total,))
+    zm = open_memmap(os.path.join(out_dir, f"{split}_zm.npy"), dtype=np.float32,
+                     mode="w+", shape=(total,))
     off = 0
     for p in chunk_paths:
         with np.load(p) as d:
@@ -162,7 +163,10 @@ def build_dataset(sgf_paths, out_dir, val_frac=0.02, seed=1234):
             continue
         if sgf.looks_like_bot(game.black_name) or sgf.looks_like_bot(game.white_name):
             continue
-        pairs = game_to_pairs(game)
+        try:
+            pairs = game_to_pairs(game)
+        except Exception:
+            continue  # one weird game must not kill the build
         if not pairs:
             continue
         n_kept += 1

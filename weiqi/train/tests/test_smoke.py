@@ -13,9 +13,10 @@ import torch
 from gotrain import features, net, rules, sgf
 from gotrain.export import export_weights, read_export
 
-# A real 9x9 KGS game (filled in after the KGS pull; must stay a genuine
-# downloaded record, not hand-written).
-REAL_GAME_SGF = None
+# A real 9x9 game, downloaded from OGS (game 73233171, Sadaharu 6d vs
+# Xaloc 3d, Tianyuan Nines Title Tournament 2023, W+R, Chinese rules).
+# Genuine downloaded record, kept verbatim (OGS nested-paren format).
+REAL_GAME_SGF = '(;FF[4]\nCA[UTF-8]\nGM[1]\nDT[2025-03-12]\nPC[OGS: https://online-go.com/game/73233171]\nGN[Tournament Game: Tianyuan Nines Title Tournament 2023 (112661) R:3 (Xaloc vs Sadaharu)]\nPB[Sadaharu]\nPW[Xaloc]\nBR[6d]\nWR[3d]\nTM[604800]OT[86400 fischer]\nRE[W+R]\nSZ[9]\nKM[7.5]\nRU[Chinese]\nC[Xaloc: Hi, have a good game\n]\n;B[ee]\nC[Xaloc: Hi, have a good game\n]\n(;W[gd]\n(;B[fc]\n(;W[gc]\n(;B[gf]\n(;W[fb]\n(;B[eb]\n(;W[ec]\n(;B[dc]\n(;W[fd]\n(;B[ed]\n(;W[cg]\n(;B[eg]\n(;W[cd]\n(;B[fc]\n(;W[ff]\n(;B[fe]\n(;W[hf]\n(;B[ge]\n(;W[he]\n(;B[hg]\n(;W[ec]\n(;B[bd]\n(;W[be]\n(;B[bc]\n(;W[ce]\n(;B[fc]\n(;W[gg]\n(;B[gh]\n(;W[ec]\n(;B[ch]\n(;W[bh]\n(;B[fc]\n(;W[ig]\n(;B[hh]\n(;W[ec]\n(;B[dg]\n(;W[dh]\n(;B[fc]\n(;W[gb]\n(;B[cf]\n(;W[bg]\n(;B[eh]\n(;W[ci]\n(;B[ec]\n(;W[cc]\n(;B[cb]\n(;W[bf]\n(;B[ih]\n(;W[id]\n(;B[if]\n(;W[ib]\nC[Xaloc: Thank you for the game\n]\n))))))))))))))))))))))))))))))))))))))))))))))))))))'
 
 
 class TestNet(unittest.TestCase):
@@ -124,6 +125,17 @@ class TestSGF(unittest.TestCase):
     def test_pass(self):
         g = sgf.parse_sgf("(;GM[1]FF[4]SZ[9];B[aa];W[])")
         self.assertEqual(g.moves, [("B", (0, 0)), ("W", None)])
+
+    def test_ogs_nested_main_line(self):
+        # OGS threads the main line through nested single-node parens.
+        g = sgf.parse_sgf("(;GM[1]FF[4]SZ[9];B[ee](;W[gd](;B[fc](;W[gc]))))")
+        self.assertEqual(g.moves, [("B", (4, 4)), ("W", (3, 6)),
+                                   ("B", (2, 5)), ("W", (2, 6))])
+
+    def test_ogs_quoted_values(self):
+        g = sgf.parse_sgf("(;GM[1]FF[4]SZ[9]RE['B+R']PB['foo'];B[aa])")
+        self.assertEqual(g.result, "B+R")
+        self.assertEqual(g.black_name, "foo")
 
 
 class TestExport(unittest.TestCase):
