@@ -17,15 +17,16 @@ Opponent moves are environment dynamics, not counted.
 Resume:  python -m gotrain.train_selfplay --out <dir> --resume <dir>/latest.pt
          (all other flags are re-read from the checkpoint's hparams)
 
-Full runs (identical code, --device picks the backend):
+Full runs (--device defaults to auto: cuda > mps > cpu; pass it explicitly
+only to override, e.g. --device cpu when debugging a backend quirk):
 
   # Free Colab GPU (T4) — ~100-200M steps ≈ 4-8 h:
   python -m gotrain.train_selfplay --out runs/auto_v1 --num-envs 64 \\
-      --total-steps 200000000 --rollout-steps 256 --device cuda
+      --total-steps 200000000 --rollout-steps 256
 
   # Apple Silicon (PyTorch MPS — no MLX port needed):
   python -m gotrain.train_selfplay --out runs/auto_v1 --num-envs 64 \\
-      --total-steps 200000000 --rollout-steps 256 --device mps
+      --total-steps 200000000 --rollout-steps 256
 
   # CPU pilot (this box, 2 vCPUs) — plumbing validation only, a few M steps:
   python -m gotrain.train_selfplay --out runs/auto_pilot --num-envs 32 \\
@@ -249,6 +250,28 @@ def apply_resumed_hparams(args, ck):
 # ---------------------------------------------------------------------------
 # main
 # ---------------------------------------------------------------------------
+def resolve_device(name):
+    """Map a --device name to torch.device.
+
+    'auto' picks cuda when available, else mps, else cpu. Explicit names are
+    validated so a typo'd or unavailable backend fails fast instead of
+    silently training on the wrong device.
+    """
+    if name == "auto":
+        if torch.cuda.is_available():
+            return torch.device("cuda")
+        mps = getattr(torch.backends, "mps", None)
+        if mps is not None and mps.is_available():
+            return torch.device("mps")
+        return torch.device("cpu")
+    if name == "cuda" and not torch.cuda.is_available():
+        raise SystemExit("--device cuda requested but torch.cuda.is_available() is False")
+    mps = getattr(torch.backends, "mps", None)
+    if name == "mps" and not (mps is not None and mps.is_available()):
+        raise SystemExit("--device mps requested but not available on this machine")
+    return torch.device(name)
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--out", required=True, help="run dir (checkpoints + train.log)")
@@ -275,18 +298,15 @@ def main():
                     help="PPO iterations between latest.pt writes")
     ap.add_argument("--max-plies", type=int, default=243)
     ap.add_argument("--seed", type=int, default=7)
-    ap.add_argument("--device", default="cpu", choices=["cpu", "cuda", "mps"])
+    ap.add_argument("--device", default="auto", choices=["auto", "cpu", "cuda", "mps"],
+                    help="compute device; 'auto' picks cuda > mps > cpu")
     ap.add_argument("--resume", default=None, help="path to latest.pt")
     args = ap.parse_args()
 
     os.makedirs(args.out, exist_ok=True)
     torch.manual_seed(args.seed)
     np.random.seed(args.seed)
-    if args.device == "cuda" and not torch.cuda.is_available():
-        raise SystemExit("--device cuda requested but torch.cuda.is_available() is False")
-    if args.device == "mps" and not torch.backends.mps.is_available():
-        raise SystemExit("--device mps requested but not available on this machine")
-    device = torch.device(args.device)
+    device = resolve_device(args.device)
     torch.set_num_threads(max(1, os.cpu_count() or 1))
 
     cfg = PPOConfig(lr=args.lr, gamma=args.gamma, gae_lambda=args.gae_lambda,
