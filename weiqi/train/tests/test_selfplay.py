@@ -13,10 +13,67 @@ import torch
 from gotrain import features, selfplay
 from gotrain.net import GoNet, EXPECTED_PARAMS
 from gotrain.ppo import PPOConfig, compute_gae, ppo_update
-from gotrain.rules import BLACK, WHITE, Board, opponent
+from gotrain.rules import BLACK, WHITE, EMPTY, Board, opponent
 from gotrain.selfplay import SelfPlayGo, legal_mask, observe, score, winner
 from gotrain.train_selfplay import save_ckpt, load_ckpt, random_opponent
 from gotrain.export import export_weights
+
+
+def reference_score(grid):
+    """Independent Tromp-Taylor reference scorer (union-find over empty points).
+
+    Deliberately a different algorithm from gotrain.selfplay.score (which
+    flood-fills with a seen-grid): empty points are merged with a disjoint-set
+    union, then each component's bordering colors decide whose territory it is.
+    Fuzz-compared against score() below; any divergence is a scoring bug.
+    """
+    n = len(grid)
+    parent = {}
+
+    def find(x):
+        while parent[x] != x:
+            parent[x] = parent[parent[x]]
+            x = parent[x]
+        return x
+
+    empties = [(r, c) for r in range(n) for c in range(n) if grid[r][c] == EMPTY]
+    for p in empties:
+        parent[p] = p
+    for r, c in empties:
+        for dr, dc in ((1, 0), (-1, 0), (0, 1), (0, -1)):
+            q = (r + dr, c + dc)
+            if q in parent:
+                rq, rp = find(q), find((r, c))
+                if rq != rp:
+                    parent[rq] = rp
+
+    black_stones = white_stones = 0
+    for r in range(n):
+        for c in range(n):
+            if grid[r][c] == BLACK:
+                black_stones += 1
+            elif grid[r][c] == WHITE:
+                white_stones += 1
+
+    comp_borders = {}
+    comp_size = {}
+    for r, c in empties:
+        root = find((r, c))
+        comp_size[root] = comp_size.get(root, 0) + 1
+        borders = comp_borders.setdefault(root, set())
+        for dr, dc in ((1, 0), (-1, 0), (0, 1), (0, -1)):
+            nr, nc = r + dr, c + dc
+            if 0 <= nr < n and 0 <= nc < n:
+                v = grid[nr][nc]
+                if v == BLACK or v == WHITE:
+                    borders.add(v)
+
+    black_terr = sum(s for root, s in comp_size.items()
+                     if comp_borders[root] == {BLACK})
+    white_terr = sum(s for root, s in comp_size.items()
+                     if comp_borders[root] == {WHITE})
+    return (black_stones + black_terr,
+            white_stones + white_terr + selfplay.KOMI)
 
 
 def random_masked_player(obs, masks):
@@ -62,6 +119,35 @@ class TestScoring(unittest.TestCase):
         self.assertTrue(terms[0])          # true terminal, not truncation
         self.assertEqual(rewards[0], -1.0)  # Black learner loses to komi
         self.assertEqual(lens[0], 2)
+
+    def test_score_matches_independent_reference(self):
+        # fuzz selfplay.score against the independent union-find
+        # reimplementation above; any divergence is a scoring bug.
+        rng = np.random.default_rng(20260924)
+        for trial in range(80):
+            b = Board(9)
+            if trial % 2 == 0:
+                # realistic: random legal play
+                color = BLACK
+                for _ in range(rng.integers(0, 50)):
+                    moves = [(r, c) for r in range(9) for c in range(9)
+                             if b.grid[r][c] == EMPTY and b.is_legal(r, c, color)]
+                    if not moves:
+                        break
+                    r, c = moves[rng.integers(len(moves))]
+                    self.assertTrue(b.play((r, c), color))
+                    color = opponent(color)
+            else:
+                # adversarial: arbitrary stone soup (scoring needs no legality)
+                for r in range(9):
+                    for c in range(9):
+                        v = rng.random()
+                        b.grid[r][c] = (BLACK if v < 0.35
+                                        else (WHITE if v < 0.7 else EMPTY))
+            bs, ws = score(b)
+            rbs, rws = reference_score(b.grid)
+            self.assertEqual(bs, rbs, f"black score mismatch, trial {trial}")
+            self.assertEqual(ws, rws, f"white score mismatch, trial {trial}")
 
 
 class TestEnvLegality(unittest.TestCase):
@@ -229,6 +315,41 @@ class TestPPO(unittest.TestCase):
         self.assertAlmostEqual(adv[1, 0].item(), 0.5, places=5)
         self.assertAlmostEqual(adv[2, 0].item(), -0.5, places=5)
 
+    def test_gae_truncation_is_episodic_terminal(self):
+        # scored max-ply endings are episodic terminals for GAE: the reward is
+        # kept, but no value bootstraps past them (only the final rollout obs
+        # is preserved, so a within-rollout truncation would otherwise leak
+        # the NEXT episode's value into this episode's advantage).
+        T, N = 3, 1
+        rewards = torch.tensor([[0.0], [1.0], [0.0]])
+        values = torch.tensor([[0.5], [0.5], [0.5]])
+        terms = torch.zeros(T, N, dtype=torch.bool)
+        truncs = torch.tensor([[False], [True], [False]])
+        adv, _ = compute_gae(rewards, values, terms, truncs,
+                             next_value=torch.zeros(N),
+                             next_term=torch.zeros(N, dtype=torch.bool),
+                             gamma=1.0, gae_lambda=1.0)
+        # t=1 truncated: adv[1] = 1 - 0.5 = 0.5, no bootstrap;
+        # t=0 bootstraps V[1] normally: adv[0] = (0 + 0.5 - 0.5) + 0.5 = 0.5.
+        # The old code gave adv[1] = 1 + 0.5 - 0.5 = 1.0 (bootstrapped V[2]).
+        self.assertAlmostEqual(adv[0, 0].item(), 0.5, places=5)
+        self.assertAlmostEqual(adv[1, 0].item(), 0.5, places=5)
+        self.assertAlmostEqual(adv[2, 0].item(), -0.5, places=5)
+
+    def test_gae_final_truncation_does_not_bootstrap(self):
+        # truncation on the last rollout step: next_value must not leak in.
+        T, N = 2, 1
+        rewards = torch.tensor([[0.0], [1.0]])
+        values = torch.tensor([[0.5], [0.5]])
+        terms = torch.zeros(T, N, dtype=torch.bool)
+        truncs = torch.zeros(T, N, dtype=torch.bool)
+        adv, _ = compute_gae(rewards, values, terms, truncs,
+                             next_value=torch.tensor([999.0]),
+                             next_term=torch.zeros(N, dtype=torch.bool),
+                             next_trunc=torch.ones(N, dtype=torch.bool),
+                             gamma=1.0, gae_lambda=1.0)
+        self.assertAlmostEqual(adv[1, 0].item(), 0.5, places=5)
+
     def test_resume_restores_hparams_not_cli_defaults(self):
         # regression (2026-09-24): resuming without --total-steps kept the 2M
         # default while the run was past it, making the annealed LR negative
@@ -250,6 +371,25 @@ class TestPPO(unittest.TestCase):
         total_iters = max(1, (args.total_steps + 4095) // 4096)
         lr_now = args.lr * max(0.0, 1.0 - 330 / total_iters)
         self.assertGreater(lr_now, 0.0)
+
+
+class TestEvaluateTally(unittest.TestCase):
+    def test_tally_counts_all_when_room(self):
+        from gotrain.train_selfplay import _tally_finished
+        wins, played, counted = _tally_finished(
+            np.array([0, 2]), np.array([-1.0, 1.0, -1.0]), 1, 0, 5)
+        self.assertEqual((wins, played), (1, 2))
+        self.assertEqual(list(counted), [0, 2])
+
+    def test_tally_caps_simultaneous_finishes(self):
+        # played=1 of n_games=2, then two envs finish on the same step: only
+        # the first is counted, so the win rate covers exactly n_games games.
+        from gotrain.train_selfplay import _tally_finished
+        wins, played, counted = _tally_finished(
+            np.array([0, 1]), np.array([1.0, -1.0]), 0, 1, 2)
+        self.assertEqual(played, 2)
+        self.assertEqual(wins, 1)
+        self.assertEqual(list(counted), [0])
 
 
 if __name__ == "__main__":

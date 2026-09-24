@@ -108,6 +108,23 @@ def make_snapshot_opponent(snapshot_net, device, greedy=False):
 # ---------------------------------------------------------------------------
 # evaluation: learner (greedy) vs an opponent_fn, alternating colors
 # ---------------------------------------------------------------------------
+def _tally_finished(done_idxs, rewards, wins, played, n_games):
+    """Fold newly finished games into (wins, played), capping at n_games.
+
+    Several envs can finish on the same step; without the cap, `played` can
+    overshoot n_games and the win rate would average over more games than
+    requested. Returns (wins, played, counted_idxs).
+    """
+    done_idxs = np.asarray(done_idxs)
+    if played < n_games:
+        done_idxs = done_idxs[: n_games - played]
+    for i in done_idxs:
+        played += 1
+        if rewards[i] > 0:
+            wins += 1
+    return wins, played, done_idxs
+
+
 @torch.no_grad()
 def evaluate(policy, opponent_fn, n_games, device, seed=12345, max_plies=None):
     """Win rate of the greedy learner vs opponent_fn (learner alternates color)."""
@@ -126,13 +143,13 @@ def evaluate(policy, opponent_fn, n_games, device, seed=12345, max_plies=None):
         masks_t = torch.from_numpy(masks).to(device)
         actions = greedy_actions(policy, obs_t, masks_t).cpu().numpy()
         obs, rewards, dones, terms, ep_lens = env.step(actions)
-        for i in np.where(dones)[0]:
-            played += 1
-            if rewards[i] > 0:
-                wins += 1
-        done_idxs = np.where(dones)[0]  # snapshot: env.reset() clears env.done
-        if len(done_idxs):
-            obs[done_idxs] = env.reset(done_idxs)
+        # snapshot before reset: env.reset() clears env.done; and cap the
+        # count at exactly n_games (several envs can finish on one step).
+        done_idxs = np.where(dones)[0]
+        wins, played, counted = _tally_finished(done_idxs, rewards, wins,
+                                               played, n_games)
+        if len(counted):
+            obs[counted] = env.reset(counted)
     return wins / max(1, played)
 
 
@@ -309,22 +326,28 @@ def main():
                 ep_rews.append(float(rewards[i]))
                 ep_lens.append(int(lens[i]))
             if t == T - 1:
-                # keep the pre-reset final obs: truncations bootstrap from the
-                # actual cutoff position; true terminals get zeroed below.
+                # keep the pre-reset final obs: the bootstrap value must come
+                # from the actual final position, not a reset one. (Scored
+                # max-ply endings are episodic terminals for GAE, so their
+                # bootstrap is zeroed below along with true terminals.)
                 last_obs, last_terms = obs.copy(), terms.copy()
+                last_truncs = (dones & ~terms).copy()
             if np.any(dones):
                 fresh = env.reset(np.where(dones)[0])
                 obs[dones] = fresh
 
-        # value bootstrap: V(final position) for live/truncated envs, 0 for true
-        # terminals (two passes -> the game really ended).
+        # value bootstrap: V(final position) for live envs; 0 for true
+        # terminals (two passes) and scored max-ply endings -- both are
+        # episodic terminals for GAE (see gotrain.ppo.compute_gae).
         with torch.no_grad():
             next_values = policy(torch.from_numpy(last_obs).to(device))[1].cpu()
-        next_values = next_values * (~torch.from_numpy(last_terms)).float()
+        final_done = torch.from_numpy(last_terms) | torch.from_numpy(last_truncs)
+        next_values = next_values * (~final_done).float()
 
         advantages, returns = compute_gae(
             b_rewards, b_values, b_terms, b_truncs, next_values,
-            torch.from_numpy(last_terms), gamma=cfg.gamma, gae_lambda=cfg.gae_lambda)
+            torch.from_numpy(last_terms), torch.from_numpy(last_truncs),
+            gamma=cfg.gamma, gae_lambda=cfg.gae_lambda)
 
         ev = explained_variance(b_values.numpy(), returns.numpy())
 

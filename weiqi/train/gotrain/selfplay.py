@@ -23,9 +23,12 @@ Opponent scheme (why this and not raw self-play):
     and advantages meaningful across the refresh boundary.
 
 Termination subtlety: two consecutive passes = true terminal (bootstrap value 0).
-Hitting max_plies is a TRUNCATION: the game is scored for a +/-1 reward, but the
-value function still bootstraps (Gymnasium terminated/truncated split). This
-matters because random early play almost never passes twice.
+Hitting max_plies is scored for a +/-1 reward and then treated as an EPISODIC
+TERMINAL for GAE (bootstrap value 0 as well). The env still reports the
+Gymnasium terminated/truncated split (see step()), but the trainer must not
+bootstrap truncations: only the final rollout observation is preserved, so a
+within-rollout truncation would otherwise bootstrap from the NEXT episode's
+value. This matters because random early play almost never passes twice.
 
 All observations are encoded from the side-to-move's perspective (plane 0 = mover's
 own stones), exactly as gotrain.features.encode specifies, so one policy net serves

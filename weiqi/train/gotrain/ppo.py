@@ -14,8 +14,10 @@ flat batches of (obs, action, logprob, reward, term, trunc, value).
 
 Conventions (shared with gotrain.train_selfplay):
   - `terms`: TRUE terminals (two passes -> game really ended, bootstrap 0).
-  - `truncs`: truncations (max plies -> game scored, but value still bootstraps).
-    dones = terms | truncs. next_nonterm = 1 - next_term.
+  - `truncs`: scored max-ply endings -> ALSO episodic terminals for GAE
+    (bootstrap 0). Only the final rollout observation is preserved, so a
+    within-rollout truncation would otherwise bootstrap from the NEXT
+    episode's value. dones = terms | truncs. next_nonterm = 1 - next_done.
   - rewards are +/-1 at game end, 0 elsewhere; the value head's tanh output
     already lives in [-1, 1], so no value rescaling is needed.
 """
@@ -45,29 +47,35 @@ class PPOConfig:
 
 
 def compute_gae(rewards, values, terms, truncs, next_value, next_term,
-                gamma=0.99, gae_lambda=0.95):
+                next_trunc=None, gamma=0.99, gae_lambda=0.95):
     """Generalized Advantage Estimation over a (T, N) rollout.
 
-    rewards/values/terms/truncs: (T, N) tensors. next_value/next_term: (N,).
-    terms=1 on TRUE terminals (bootstrap 0); truncations keep bootstrapping.
+    rewards/values/terms/truncs: (T, N) tensors. next_value/next_term/next_trunc: (N,).
+    terms=1 on TRUE terminals (two passes -> bootstrap 0). truncs=1 on scored
+    max-ply endings: the game is scored for +/-1 but the position is ALSO an
+    episodic terminal for GAE (bootstrap 0), because only the final rollout
+    observation is preserved -- a within-rollout truncation would otherwise
+    bootstrap from the next episode's value.
     Returns (advantages, returns) as (T, N) tensors.
     """
     T, N = rewards.shape
+    if next_trunc is None:
+        next_trunc = torch.zeros_like(next_term)
+    dones = terms | truncs
+    next_done = next_term | next_trunc
     advantages = torch.zeros_like(rewards)
     last_gae = torch.zeros(N, device=rewards.device, dtype=rewards.dtype)
     for t in reversed(range(T)):
         if t == T - 1:
             next_val = next_value
-            next_nonterm = 1.0 - next_term.float()
+            next_nonterm = 1.0 - next_done.float()
         else:
             next_val = values[t + 1]
             # mask on whether the CURRENT transition ended the episode: if
-            # terms[t], values[t+1] belongs to the next episode and must not
-            # be bootstrapped (using terms[t+1] here leaks value across the
+            # dones[t], values[t+1] belongs to the next episode and must not
+            # be bootstrapped (using dones[t+1] here leaks value across the
             # boundary in both directions).
-            next_nonterm = 1.0 - terms[t].float()
-        # truncations: reward was scored, but the value still bootstraps, so
-        # next_nonterm stays 1 for them (only true terminals zero it)
+            next_nonterm = 1.0 - dones[t].float()
         delta = rewards[t] + gamma * next_val * next_nonterm - values[t]
         last_gae = delta + gamma * gae_lambda * next_nonterm * last_gae
         advantages[t] = last_gae
