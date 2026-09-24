@@ -9,7 +9,13 @@
 # ~= 20h. Run with setsid/nohup so it survives the session.
 set -u
 cd "$(dirname "$0")"
-V="$HOME/workspace/venvs/torch-cpu/bin/python"
+# Portable: use the project venv created by `uv sync` (see pyproject.toml).
+# Not the absolute venv path of whatever machine first ran this.
+if [ ! -x .venv/bin/python ]; then
+    echo "error: .venv/bin/python not found — run 'uv sync' in weiqi/train first" >&2
+    exit 1
+fi
+V=".venv/bin/python"
 
 echo "=== [1/3] OGS pull ==="
 $V -m gotrain.ogs_pull --out data/ogs_full --max-games 60000 \

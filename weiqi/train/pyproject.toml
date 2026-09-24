@@ -1,0 +1,12 @@
+[project]
+name = "weiqi-train"
+version = "0.1.0"
+description = "Training package for the 9x9 Go demo nets (self-play PPO + supervised cloning)"
+requires-python = ">=3.12"
+dependencies = [
+    # Pinned to the versions the training stack was built and tested against.
+    # torch from PyPI ships CUDA builds on Linux and MPS on Apple Silicon;
+    # --device defaults to auto and picks the best available backend.
+    "torch==2.14.0",
+    "numpy==2.5.2",
+]

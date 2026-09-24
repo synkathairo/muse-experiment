@@ -41,10 +41,14 @@ Theory for both legs lives in `weiqi/theory.md`.
 
 ```bash
 cd weiqi/train
-uv venv .venv && source .venv/bin/activate
-uv pip install torch numpy          # ARM wheel on Apple Silicon, MPS included
-python -c "import torch; print(torch.backends.mps.is_available())"  # expect True
+uv sync   # creates .venv and installs the locked deps (pyproject.toml + uv.lock)
+uv run python -c "import torch; print(torch.backends.mps.is_available())"  # expect True on Apple Silicon
 ```
+
+`uv sync` is the whole setup — no manual `uv venv`, no `pip install`, no
+activation. `uv run` executes in the project environment (re-syncing if the
+lockfile changed). Dependencies are pinned (`torch==2.14.0`, `numpy==2.5.2`,
+Python ≥3.12), so every machine resolves the identical environment.
 
 `--device` defaults to `auto` (cuda > mps > cpu); the resolved device is
 logged at startup. Pass `--device cpu` explicitly only to debug a backend.
@@ -52,14 +56,14 @@ logged at startup. Pass `--device cpu` explicitly only to debug a backend.
 Smoke test first (~15 min, confirms the backend works):
 
 ```bash
-python -m gotrain.train_selfplay --out runs/smoke --total-steps 200000
+uv run python -m gotrain.train_selfplay --out runs/smoke --total-steps 200000
 ```
 
 The real run — start **clean** (no `--resume` from the pilot; it trained
 under the old GAE/max-ply semantics, fixed since — see § Pilot caveats):
 
 ```bash
-caffeinate -i python -m gotrain.train_selfplay \
+caffeinate -i uv run python -m gotrain.train_selfplay \
     --out runs/laptop_clean --total-steps 100000000
 ```
 
@@ -71,7 +75,7 @@ the pilot's ~200 steps/sec: 100M steps ≈ 6 days, 200M ≈ 12 days.
 Resume after any interruption (optimizer, step, and RNG state all restore):
 
 ```bash
-python -m gotrain.train_selfplay --out runs/laptop_clean \
+uv run python -m gotrain.train_selfplay --out runs/laptop_clean \
     --resume runs/laptop_clean/latest.pt
 ```
 
@@ -97,7 +101,7 @@ Key flags: `--num-envs` (default 32), `--rollout-steps` (128),
 ## Exporting weights for the demo
 
 ```bash
-python -m gotrain.export --checkpoint runs/laptop_clean/snap_050000000.pt \
+uv run python -m gotrain.export --checkpoint runs/laptop_clean/snap_050000000.pt \
     --out-dir ./exports/ --name selfplay-50m.bin
 ```
 
@@ -141,10 +145,10 @@ ruleset, and the net never sees a ruleset label).
 Reproduce the pipeline (needs a corpus in `data/` first):
 
 ```bash
-python -m gotrain.dataset --sgf data/ogs --out data/ds_full
-python -m gotrain.train_cloning --data data/ds_full --out runs/imit_v1 \
+uv run python -m gotrain.dataset --sgf data/ogs --out data/ds_full
+uv run python -m gotrain.train_cloning --data data/ds_full --out runs/imit_v1 \
     --max-steps 60000 --val-every 1000
-python -m gotrain.export --checkpoint runs/imit_v1/snap_0003000.pt \
+uv run python -m gotrain.export --checkpoint runs/imit_v1/snap_0003000.pt \
     --out-dir ./exports/ --name imit-003k.bin
 ```
 
