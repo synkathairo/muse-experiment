@@ -7,7 +7,7 @@
 //!
 //! No dependencies, no platform-specific code: this crate must also compile to
 //! `wasm32-unknown-unknown` for the browser demo (the thin wasm-bindgen shim lives
-//! in `web/src/go-wasm/` and path-depends on this crate).
+//! in `web/src/weiqi-wasm/` and path-depends on this crate).
 
 pub mod features;
 pub mod infer;

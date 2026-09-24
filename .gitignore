@@ -11,6 +11,8 @@ __pycache__/
 web/site/demos/zk/pkg/
 web/site/demos/fluid/pkg/
 web/site/demos/audio/pkg/
+web/site/demos/go/pkg/
 web/src/zk-wasm/target/
 web/src/fluid-wasm/target/
 web/src/audio-wasm/target/
+web/src/weiqi-wasm/target/

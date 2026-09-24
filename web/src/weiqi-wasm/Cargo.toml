@@ -1,0 +1,21 @@
+# weiqi-wasm: WebAssembly bindings for the 9x9 weiqi/go demo.
+#
+# Thin wasm-bindgen layer over ../../../weiqi/engine (path dependency, no crates).
+# Game rules and the hand-rolled CNN forward pass run entirely client-side;
+# weight blobs are fetched as static assets, never baked into the binary
+# (see web/site/demos/go/weights/ + manifest.json).
+#
+[package.metadata.wasm-pack.profile.release]
+wasm-opt = false  # skip binaryen download; toy-sized output is fine as-is
+
+[package]
+name = "weiqi-wasm"
+version = "0.1.0"
+edition = "2021"
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+weiqi-engine = { path = "../../../weiqi/engine" }
+wasm-bindgen = "0.2"
