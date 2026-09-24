@@ -142,9 +142,11 @@ def phase1_discovery(args):
         while queue and len(seen_games) < args.max_games and n_players < args.max_players:
             pid = queue.pop(0)
             n_players += 1
+            n_this_player = 0
             url = (f"{API}/api/v1/players/{pid}/games/?format=json"
                    f"&page_size=100&width=9&height=9&ordering=-ended")
-            while url and len(seen_games) < args.max_games:
+            while url and len(seen_games) < args.max_games \
+                    and n_this_player < args.max_games_per_player:
                 d = api_get(url, args.delay)
                 for g in d["results"]:
                     gid = g["id"]
@@ -162,6 +164,7 @@ def phase1_discovery(args):
                     if is_bot(bp) or is_bot(wp):
                         continue
                     seen_games.add(gid)
+                    n_this_player += 1
                     manifest.write(json.dumps({
                         "id": gid,
                         "black": g.get("black"), "white": g.get("white"),
@@ -216,6 +219,8 @@ def main():
                     help="use top-N ladder members as seeds")
     ap.add_argument("--workers", type=int, default=3,
                     help="parallel SGF download workers")
+    ap.add_argument("--max-games-per-player", type=int, default=500,
+                    help="cap games taken from a single player (forces breadth)")
     ap.add_argument("--phase2-only", action="store_true",
                     help="skip discovery; download SGFs for manifest.jsonl only")
     args = ap.parse_args()

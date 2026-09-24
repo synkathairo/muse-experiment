@@ -13,7 +13,8 @@ V="$HOME/workspace/venvs/torch-cpu/bin/python"
 
 echo "=== [1/3] OGS pull ==="
 $V -m gotrain.ogs_pull --out data/ogs_full --max-games 60000 \
-    --seed-ladder-size 1830 --max-players 1500 --delay 0.5 --workers 3 \
+    --seed-ladder-size 1830 --max-players 1500 --max-games-per-player 500 \
+    --delay 0.5 --workers 3 \
     >> data/ogs_full_pull.log 2>&1
 
 echo "=== [2/3] dataset build ==="
