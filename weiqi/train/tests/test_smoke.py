@@ -137,6 +137,11 @@ class TestSGF(unittest.TestCase):
         self.assertEqual(g.result, "B+R")
         self.assertEqual(g.black_name, "foo")
 
+    def test_timeout_ogs_notation(self):
+        self.assertTrue(sgf.is_timeout("W+T"))
+        self.assertTrue(sgf.is_timeout("B+Time"))
+        self.assertFalse(sgf.is_timeout("B+2.5"))
+
     def test_handicap_white_to_move(self):
         g = sgf.parse_sgf("(;GM[1]FF[4]SZ[9]HA[2]AB[cc][gg]RE[W+R];W[ee];B[aa])")
         self.assertEqual(g.to_play, "W")

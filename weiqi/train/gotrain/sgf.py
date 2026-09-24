@@ -191,7 +191,8 @@ def result_to_z(result):
 
 
 def is_timeout(result):
-    return "TIME" in result.strip().upper()
+    r = result.strip().upper()
+    return "TIME" in r or r.endswith("+T")  # OGS: 'W+T'; KGS: 'B+Time'
 
 
 def looks_like_bot(name):
