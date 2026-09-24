@@ -210,5 +210,47 @@ class TestPPO(unittest.TestCase):
             self.assertFalse((actions == 0).any())
 
 
+    def test_gae_does_not_bootstrap_across_terminal(self):
+        # regression: compute_gae masked with terms[t+1] instead of terms[t],
+        # leaking the next episode's value into a finished episode's advantage.
+        T, N = 3, 1
+        rewards = torch.tensor([[0.0], [1.0], [0.0]])
+        values = torch.tensor([[0.5], [0.5], [0.5]])
+        terms = torch.tensor([[False], [True], [False]])
+        truncs = torch.zeros(T, N, dtype=torch.bool)
+        adv, _ = compute_gae(rewards, values, terms, truncs,
+                             next_value=torch.zeros(N),
+                             next_term=torch.zeros(N, dtype=torch.bool),
+                             gamma=1.0, gae_lambda=1.0)
+        # t=1 ended the episode: adv[1] = 1 - 0.5 = 0.5 (no bootstrap);
+        # t=0 bootstraps V[1] normally: adv[0] = (0 + 0.5 - 0.5) + 0.5 = 0.5.
+        # The buggy version gave adv[0] = -0.5 (masked by terms[1]).
+        self.assertAlmostEqual(adv[0, 0].item(), 0.5, places=5)
+        self.assertAlmostEqual(adv[1, 0].item(), 0.5, places=5)
+        self.assertAlmostEqual(adv[2, 0].item(), -0.5, places=5)
+
+    def test_resume_restores_hparams_not_cli_defaults(self):
+        # regression (2026-09-24): resuming without --total-steps kept the 2M
+        # default while the run was past it, making the annealed LR negative
+        # (gradient ascent) and destroying the policy in a single iteration.
+        import argparse
+        from gotrain.train_selfplay import apply_resumed_hparams
+        args = argparse.Namespace(out="new_dir", device="cpu", total_steps=2000000,
+                                  lr=2.5e-4, seed=7, num_envs=32,
+                                  rollout_steps=128)
+        ck = {"hparams": {"out": "old_dir", "device": "cuda",
+                          "total_steps": 3000000, "lr": 1e-4, "seed": 7,
+                          "num_envs": 32, "rollout_steps": 128}}
+        apply_resumed_hparams(args, ck)
+        self.assertEqual(args.total_steps, 3000000)  # checkpoint wins
+        self.assertEqual(args.lr, 1e-4)
+        self.assertEqual(args.out, "new_dir")    # run dir stays the resumer's
+        self.assertEqual(args.device, "cpu")     # launch env stays the resumer's
+        # and the annealed LR at the resumed iteration is positive
+        total_iters = max(1, (args.total_steps + 4095) // 4096)
+        lr_now = args.lr * max(0.0, 1.0 - 330 / total_iters)
+        self.assertGreater(lr_now, 0.0)
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -163,6 +163,22 @@ def load_ckpt(path, policy, optimizer, snapshot, device):
     return ck
 
 
+def apply_resumed_hparams(args, ck):
+    """Restore a resumed run's hyperparameters from its checkpoint.
+
+    Only --out and --device stay as given on the CLI (run directory and launch
+    environment are the resumer's choice); everything else reverts to the
+    checkpoint's values. Skipping this silently keeps argparse defaults -- e.g.
+    --total-steps falls back to 2M -- which corrupts the LR schedule and can
+    even make it negative (gradient ASCENT, destroying the policy in one iter).
+    Returns the restored hparams dict.
+    """
+    for k, v in ck.get("hparams", {}).items():
+        if k not in ("out", "device"):
+            setattr(args, k, v)
+    return {k: v for k, v in vars(args).items() if k != "resume"}
+
+
 # ---------------------------------------------------------------------------
 # main
 # ---------------------------------------------------------------------------
@@ -226,7 +242,13 @@ def main():
         step = ck["step"]
         ppo_iter = ck["ppo_iter"]
         snap_ptr = ck["snap_ptr"]
-        hparams = ck.get("hparams", hparams)
+        hparams = apply_resumed_hparams(args, ck)
+        # rebuild the PPO config from the restored hyperparameters
+        cfg = PPOConfig(lr=args.lr, gamma=args.gamma, gae_lambda=args.gae_lambda,
+                        clip_coef=args.clip_coef, vf_coef=args.vf_coef,
+                        ent_coef=args.ent_coef, max_grad_norm=args.max_grad_norm,
+                        update_epochs=args.update_epochs,
+                        minibatch_size=args.minibatch_size)
         print(f"resumed from {args.resume} at step {step} (iter {ppo_iter})", flush=True)
 
     logf = open(os.path.join(args.out, "train.log"), "a")
@@ -246,7 +268,10 @@ def main():
     obs = env.reset()  # (N,6,9,9) float32, learner to move
 
     T, N = args.rollout_steps, args.num_envs
-    total_iters = max(1, (args.total_steps - step + T * N - 1) // (T * N))
+    # Annealing schedule anchored to the ORIGINAL run length, so it stays
+    # consistent across resumes instead of being recomputed from remaining steps
+    # (which would also let ppo_iter exceed total_iters -> negative LR).
+    total_iters = max(1, (args.total_steps + T * N - 1) // (T * N))
     t0 = time.time()
     step0 = step  # for honest steps/sec across resumes
     policy.train()
@@ -305,7 +330,9 @@ def main():
 
         # ---- PPO update ----------------------------------------------------
         flat = lambda x: x.reshape(T * N, *x.shape[2:])
-        lr_now = cfg.lr * (1.0 - ppo_iter / total_iters) if cfg.anneal_lr else cfg.lr
+        # Clamp at 0: on a resumed run ppo_iter can reach total_iters, and a
+        # negative LR is gradient ASCENT -- it destroys the policy in one step.
+        lr_now = cfg.lr * max(0.0, 1.0 - ppo_iter / total_iters) if cfg.anneal_lr else cfg.lr
         stats = ppo_update(policy, optimizer, cfg,
                            flat(b_obs).to(device), flat(b_actions).to(device),
                            flat(b_logps).to(device), flat(advantages).to(device),

@@ -61,7 +61,11 @@ def compute_gae(rewards, values, terms, truncs, next_value, next_term,
             next_nonterm = 1.0 - next_term.float()
         else:
             next_val = values[t + 1]
-            next_nonterm = 1.0 - terms[t + 1].float()
+            # mask on whether the CURRENT transition ended the episode: if
+            # terms[t], values[t+1] belongs to the next episode and must not
+            # be bootstrapped (using terms[t+1] here leaks value across the
+            # boundary in both directions).
+            next_nonterm = 1.0 - terms[t].float()
         # truncations: reward was scored, but the value still bootstraps, so
         # next_nonterm stays 1 for them (only true terminals zero it)
         delta = rewards[t] + gamma * next_val * next_nonterm - values[t]
