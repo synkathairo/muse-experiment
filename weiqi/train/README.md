@@ -47,8 +47,11 @@ uv run python -c "import torch; print(torch.backends.mps.is_available())"  # exp
 
 `uv sync` is the whole setup — no manual `uv venv`, no `pip install`, no
 activation. `uv run` executes in the project environment (re-syncing if the
-lockfile changed). Dependencies are pinned (`torch==2.14.0`, `numpy==2.5.2`,
-Python ≥3.12), so every machine resolves the identical environment.
+lockfile changed). Dependencies are declared in `pyproject.toml` (`torch>=2.14,<2.15`, `numpy==2.5.2`,
+Python ≥3.12) and the exact per-platform artifacts are frozen in `uv.lock`
+(Linux resolves torch `2.14.0+cpu` from PyTorch's CPU index — no 2.5GB CUDA
+bundle on CPU-only boxes; macOS gets the MPS wheel from PyPI), so every
+machine installs the identical environment.
 
 `--device` defaults to `auto` (cuda > mps > cpu); the resolved device is
 logged at startup. Pass `--device cpu` explicitly only to debug a backend.

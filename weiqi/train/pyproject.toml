@@ -4,9 +4,23 @@ version = "0.1.0"
 description = "Training package for the 9x9 Go demo nets (self-play PPO + supervised cloning)"
 requires-python = ">=3.12"
 dependencies = [
-    # Pinned to the versions the training stack was built and tested against.
-    # torch from PyPI ships CUDA builds on Linux and MPS on Apple Silicon;
-    # --device defaults to auto and picks the best available backend.
-    "torch==2.14.0",
+    # Version range (not ==): the Linux CPU-only index tags its builds
+    # 2.14.0+cpu, which ==2.14.0 would not match (PEP 440). The uv.lock
+    # records the exact artifact per platform, so `uv sync` stays
+    # bit-for-bit reproducible.
+    "torch>=2.14,<2.15",
     "numpy==2.5.2",
+]
+
+# PyPI's Linux torch wheels bundle CUDA (~2.5GB) even on CPU-only boxes.
+# Route Linux to PyTorch's CPU-only index; macOS keeps the PyPI wheel
+# (MPS included, ~200MB). explicit=true so only torch uses this index.
+[[tool.uv.index]]
+name = "pytorch-cpu"
+url = "https://download.pytorch.org/whl/cpu"
+explicit = true
+
+[tool.uv.sources]
+torch = [
+    { index = "pytorch-cpu", marker = "sys_platform == 'linux'" },
 ]
