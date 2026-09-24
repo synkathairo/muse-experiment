@@ -1,0 +1,354 @@
+"""Self-play PPO training (Autodidact) — PLAN.md §5. No PufferLib.
+
+Trains gotrain.net.GoNet from scratch: the learner plays both colors (alternating
+per episode) against a frozen snapshot of its own policy, refreshed every K PPO
+iterations. Pure +/-1 terminal reward; the value head learns win probability.
+
+Checkpoint discipline mirrors train_cloning.py:
+  - rolling `latest.pt` (model + optimizer + opponent snapshot + step + RNG),
+    every --ckpt-every PPO iterations;
+  - frozen log-spaced snapshots `snap_{env_steps}.pt` in ENV STEPS
+    (1k, 3k, 10k, 30k, ...) — never overwritten, feed the time-machine.
+  - fp16 export of the final model at the end (gotrain.export).
+
+An "env step" here = one learner move across one env (one PPO sample).
+Opponent moves are environment dynamics, not counted.
+
+Resume:  python -m gotrain.train_selfplay --out <dir> --resume <dir>/latest.pt
+         (all other flags are re-read from the checkpoint's hparams)
+
+Full runs (identical code, --device picks the backend):
+
+  # Free Colab GPU (T4) — ~100-200M steps ≈ 4-8 h:
+  python -m gotrain.train_selfplay --out runs/auto_v1 --num-envs 64 \\
+      --total-steps 200000000 --rollout-steps 256 --device cuda
+
+  # Apple Silicon (PyTorch MPS — no MLX port needed):
+  python -m gotrain.train_selfplay --out runs/auto_v1 --num-envs 64 \\
+      --total-steps 200000000 --rollout-steps 256 --device mps
+
+  # CPU pilot (this box, 2 vCPUs) — plumbing validation only, a few M steps:
+  python -m gotrain.train_selfplay --out runs/auto_pilot --num-envs 32 \\
+      --total-steps 2000000 --rollout-steps 128 --device cpu \\
+      --opp-refresh-every 10 --eval-every 20 --ckpt-every 10
+"""
+
+import argparse
+import json
+import os
+import time
+
+import numpy as np
+import torch
+import torch.nn.functional as F
+
+from .export import export_weights
+from .net import GoNet
+from .ppo import PPOConfig, compute_gae, ppo_update, explained_variance
+from .selfplay import SelfPlayGo, PASS
+
+# Frozen museum snapshots, log-spaced in env steps (cf. train_cloning.SNAP_STEPS,
+# which is in gradient steps — here the natural unit is env steps / PPO samples).
+SNAP_STEPS = [1000, 3000, 10000, 30000, 100000, 300000, 1000000,
+              3000000, 10000000, 30000000, 100000000, 300000000]
+
+
+# ---------------------------------------------------------------------------
+# masked action sampling
+# ---------------------------------------------------------------------------
+def masked_dist(logits, masks):
+    """Categorical over legal moves only (illegal logits -> -inf -> 0 mass)."""
+    return torch.distributions.Categorical(
+        logits=logits.masked_fill(~masks, float("-inf")))
+
+
+@torch.no_grad()
+def sample_actions(policy, obs_t, masks_t):
+    logits, values = policy(obs_t)
+    dist = masked_dist(logits, masks_t)
+    actions = dist.sample()
+    return actions, dist.log_prob(actions), values.view(-1)
+
+
+@torch.no_grad()
+def greedy_actions(policy, obs_t, masks_t):
+    """Argmax over legal moves (for eval)."""
+    logits, _ = policy(obs_t)
+    masked = logits.masked_fill(~masks_t, float("-inf"))
+    return masked.argmax(dim=-1)
+
+
+def random_opponent(obs, masks):
+    """Uniform over legal moves. obs unused; signature matches opponent_fn."""
+    B = masks.shape[0]
+    actions = np.empty(B, dtype=np.int64)
+    for b in range(B):
+        legal = np.flatnonzero(masks[b])
+        actions[b] = np.random.choice(legal)
+    return actions
+
+
+def make_snapshot_opponent(snapshot_net, device, greedy=False):
+    """opponent_fn playing the frozen snapshot (sampled, or greedy for eval)."""
+    snapshot_net.eval()
+
+    @torch.no_grad()
+    def fn(obs, masks):
+        obs_t = torch.from_numpy(obs).to(device)
+        masks_t = torch.from_numpy(masks).to(device)
+        if greedy:
+            a = greedy_actions(snapshot_net, obs_t, masks_t)
+        else:
+            a, _, _ = sample_actions(snapshot_net, obs_t, masks_t)
+        return a.cpu().numpy().astype(np.int64)
+
+    return fn
+
+
+# ---------------------------------------------------------------------------
+# evaluation: learner (greedy) vs an opponent_fn, alternating colors
+# ---------------------------------------------------------------------------
+@torch.no_grad()
+def evaluate(policy, opponent_fn, n_games, device, seed=12345, max_plies=None):
+    """Win rate of the greedy learner vs opponent_fn (learner alternates color)."""
+    env = SelfPlayGo(num_envs=n_games, seed=seed,
+                     max_plies=max_plies or 3 * 9 * 9, opponent_fn=opponent_fn)
+    obs = env.reset()
+    wins = 0
+    played = 0
+    while played < n_games:
+        masks = env.legal_masks_learner()
+        obs_t = torch.from_numpy(obs).to(device)
+        masks_t = torch.from_numpy(masks).to(device)
+        actions = greedy_actions(policy, obs_t, masks_t).cpu().numpy()
+        obs, rewards, dones, terms, ep_lens = env.step(actions)
+        for i in np.where(dones)[0]:
+            played += 1
+            if rewards[i] > 0:
+                wins += 1
+        if np.any(dones):
+            obs[env.done] = env.reset(np.where(env.done)[0])
+    return wins / max(1, played)
+
+
+# ---------------------------------------------------------------------------
+# checkpointing
+# ---------------------------------------------------------------------------
+def save_ckpt(path, policy, optimizer, snapshot, step, ppo_iter, snap_ptr, hparams):
+    torch.save({
+        "step": step,               # env steps (learner moves) so far
+        "ppo_iter": ppo_iter,
+        "snap_ptr": snap_ptr,
+        "model": policy.state_dict(),
+        "opponent": snapshot.state_dict(),
+        "optimizer": optimizer.state_dict(),
+        "torch_rng": torch.get_rng_state(),
+        "numpy_rng": np.random.get_state(),
+        "hparams": hparams,
+    }, path)
+
+
+def load_ckpt(path, policy, optimizer, snapshot, device):
+    ck = torch.load(path, map_location=device, weights_only=False)
+    policy.load_state_dict(ck["model"])
+    snapshot.load_state_dict(ck["opponent"])
+    optimizer.load_state_dict(ck["optimizer"])
+    torch.set_rng_state(ck["torch_rng"].cpu())
+    np.random.set_state(ck["numpy_rng"])
+    return ck
+
+
+# ---------------------------------------------------------------------------
+# main
+# ---------------------------------------------------------------------------
+def main():
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--out", required=True, help="run dir (checkpoints + train.log)")
+    ap.add_argument("--num-envs", type=int, default=32)
+    ap.add_argument("--total-steps", type=int, default=2000000,
+                    help="env steps (learner moves); 100-200M for the real run")
+    ap.add_argument("--rollout-steps", type=int, default=128,
+                    help="learner moves per env per PPO iteration")
+    ap.add_argument("--minibatch-size", type=int, default=256)
+    ap.add_argument("--update-epochs", type=int, default=4)
+    ap.add_argument("--lr", type=float, default=2.5e-4)
+    ap.add_argument("--gamma", type=float, default=0.99)
+    ap.add_argument("--gae-lambda", type=float, default=0.95)
+    ap.add_argument("--clip-coef", type=float, default=0.2)
+    ap.add_argument("--vf-coef", type=float, default=0.5)
+    ap.add_argument("--ent-coef", type=float, default=0.01)
+    ap.add_argument("--max-grad-norm", type=float, default=0.5)
+    ap.add_argument("--opp-refresh-every", type=int, default=10,
+                    help="PPO iterations between opponent snapshot refreshes")
+    ap.add_argument("--eval-every", type=int, default=20,
+                    help="PPO iterations between evals (0 = off)")
+    ap.add_argument("--eval-games", type=int, default=20)
+    ap.add_argument("--ckpt-every", type=int, default=10,
+                    help="PPO iterations between latest.pt writes")
+    ap.add_argument("--max-plies", type=int, default=243)
+    ap.add_argument("--seed", type=int, default=7)
+    ap.add_argument("--device", default="cpu", choices=["cpu", "cuda", "mps"])
+    ap.add_argument("--resume", default=None, help="path to latest.pt")
+    args = ap.parse_args()
+
+    os.makedirs(args.out, exist_ok=True)
+    torch.manual_seed(args.seed)
+    np.random.seed(args.seed)
+    if args.device == "cuda" and not torch.cuda.is_available():
+        raise SystemExit("--device cuda requested but torch.cuda.is_available() is False")
+    if args.device == "mps" and not torch.backends.mps.is_available():
+        raise SystemExit("--device mps requested but not available on this machine")
+    device = torch.device(args.device)
+    torch.set_num_threads(max(1, os.cpu_count() or 1))
+
+    cfg = PPOConfig(lr=args.lr, gamma=args.gamma, gae_lambda=args.gae_lambda,
+                    clip_coef=args.clip_coef, vf_coef=args.vf_coef,
+                    ent_coef=args.ent_coef, max_grad_norm=args.max_grad_norm,
+                    update_epochs=args.update_epochs,
+                    minibatch_size=args.minibatch_size)
+
+    policy = GoNet().to(device)
+    snapshot = GoNet().to(device)   # frozen opponent; refreshed every K iters
+    snapshot.load_state_dict(policy.state_dict())
+    optimizer = torch.optim.Adam(policy.parameters(), lr=args.lr)
+    hparams = {k: v for k, v in vars(args).items() if k != "resume"}
+
+    step = 0          # env steps (learner moves) completed
+    ppo_iter = 0
+    snap_ptr = 0
+    if args.resume:
+        ck = load_ckpt(args.resume, policy, optimizer, snapshot, device)
+        step = ck["step"]
+        ppo_iter = ck["ppo_iter"]
+        snap_ptr = ck["snap_ptr"]
+        hparams = ck.get("hparams", hparams)
+        print(f"resumed from {args.resume} at step {step} (iter {ppo_iter})", flush=True)
+
+    logf = open(os.path.join(args.out, "train.log"), "a")
+
+    def log(msg):
+        line = f"[{time.strftime('%Y-%m-%d %H:%M:%S')}] {msg}"
+        print(line, flush=True)
+        logf.write(line + "\n")
+        logf.flush()
+
+    log(f"start: {json.dumps(hparams)} resuming_at={step}")
+    log(f"device={device} params={policy.param_count()}")
+
+    env = SelfPlayGo(num_envs=args.num_envs, seed=args.seed,
+                     max_plies=args.max_plies,
+                     opponent_fn=make_snapshot_opponent(snapshot, device))
+    obs = env.reset()  # (N,6,9,9) float32, learner to move
+
+    T, N = args.rollout_steps, args.num_envs
+    total_iters = max(1, (args.total_steps - step + T * N - 1) // (T * N))
+    t0 = time.time()
+    policy.train()
+
+    while step < args.total_steps:
+        # ---- rollout ------------------------------------------------------
+        b_obs = torch.zeros(T, N, 6, 9, 9)
+        b_masks = torch.zeros(T, N, PASS + 1, dtype=torch.bool)
+        b_actions = torch.zeros(T, N, dtype=torch.int64)
+        b_logps = torch.zeros(T, N)
+        b_rewards = torch.zeros(T, N)
+        b_terms = torch.zeros(T, N, dtype=torch.bool)
+        b_truncs = torch.zeros(T, N, dtype=torch.bool)
+        b_values = torch.zeros(T, N)
+        ep_rews, ep_lens = [], []
+        last_obs, last_terms = None, None
+
+        for t in range(T):
+            masks = env.legal_masks_learner()
+            obs_t = torch.from_numpy(obs).to(device)
+            masks_t = torch.from_numpy(masks).to(device)
+            actions, logps, values = sample_actions(policy, obs_t, masks_t)
+
+            b_obs[t] = obs_t.cpu()
+            b_masks[t] = masks_t.cpu()
+            b_actions[t] = actions.cpu()
+            b_logps[t] = logps.cpu()
+            b_values[t] = values.cpu()
+
+            obs, rewards, dones, terms, lens = env.step(actions.cpu().numpy())
+            b_rewards[t] = torch.from_numpy(rewards)
+            b_terms[t] = torch.from_numpy(terms)
+            b_truncs[t] = torch.from_numpy(dones & ~terms)
+            for i in np.where(dones)[0]:
+                ep_rews.append(float(rewards[i]))
+                ep_lens.append(int(lens[i]))
+            if t == T - 1:
+                # keep the pre-reset final obs: truncations bootstrap from the
+                # actual cutoff position; true terminals get zeroed below.
+                last_obs, last_terms = obs.copy(), terms.copy()
+            if np.any(dones):
+                fresh = env.reset(np.where(dones)[0])
+                obs[dones] = fresh
+
+        # value bootstrap: V(final position) for live/truncated envs, 0 for true
+        # terminals (two passes -> the game really ended).
+        with torch.no_grad():
+            next_values = policy(torch.from_numpy(last_obs).to(device))[1].cpu()
+        next_values = next_values * (~torch.from_numpy(last_terms)).float()
+
+        advantages, returns = compute_gae(
+            b_rewards, b_values, b_terms, b_truncs, next_values,
+            torch.from_numpy(last_terms), gamma=cfg.gamma, gae_lambda=cfg.gae_lambda)
+
+        ev = explained_variance(b_values.numpy(), returns.numpy())
+
+        # ---- PPO update ----------------------------------------------------
+        flat = lambda x: x.reshape(T * N, *x.shape[2:])
+        lr_now = cfg.lr * (1.0 - ppo_iter / total_iters) if cfg.anneal_lr else cfg.lr
+        stats = ppo_update(policy, optimizer, cfg,
+                           flat(b_obs).to(device), flat(b_actions).to(device),
+                           flat(b_logps).to(device), flat(advantages).to(device),
+                           flat(returns).to(device), flat(b_values).to(device),
+                           flat(b_masks).to(device), lr_now=lr_now)
+
+        step += T * N
+        ppo_iter += 1
+
+        # ---- opponent refresh ----------------------------------------------
+        if ppo_iter % args.opp_refresh_every == 0:
+            snapshot.load_state_dict(policy.state_dict())
+
+        # ---- snapshots -------------------------------------------------------
+        while snap_ptr < len(SNAP_STEPS) and step >= SNAP_STEPS[snap_ptr]:
+            sp = os.path.join(args.out, f"snap_{SNAP_STEPS[snap_ptr]:09d}.pt")
+            save_ckpt(sp, policy, optimizer, snapshot, step, ppo_iter,
+                      snap_ptr + 1, hparams)
+            log(f"frozen snapshot -> {sp}")
+            snap_ptr += 1
+        if ppo_iter % args.ckpt_every == 0:
+            save_ckpt(os.path.join(args.out, "latest.pt"), policy, optimizer,
+                      snapshot, step, ppo_iter, snap_ptr, hparams)
+
+        # ---- eval ------------------------------------------------------------
+        eval_str = ""
+        if args.eval_every and ppo_iter % args.eval_every == 0:
+            wr_rand = evaluate(policy, random_opponent, args.eval_games, device)
+            wr_snap = evaluate(policy, make_snapshot_opponent(snapshot, device,
+                                                             greedy=True),
+                               args.eval_games, device)
+            eval_str = f" eval_vs_random={wr_rand:.2f} eval_vs_snapshot={wr_snap:.2f}"
+
+        sps = step / (time.time() - t0)
+        ep_r = f"{np.mean(ep_rews):+.3f}" if ep_rews else "n/a"
+        ep_l = f"{np.mean(ep_lens):.0f}" if ep_lens else "n/a"
+        log(f"iter {ppo_iter}: step {step} sps={sps:.0f} ep_rew={ep_r} "
+            f"ep_len={ep_l} pg={stats['pg_loss']:.4f} v={stats['v_loss']:.4f} "
+            f"ent={stats['entropy']:.3f} kl={stats['approx_kl']:.4f} "
+            f"clipfrac={stats['clipfrac']:.3f} ev={ev:.3f}{eval_str}")
+
+    save_ckpt(os.path.join(args.out, "latest.pt"), policy, optimizer, snapshot,
+              step, ppo_iter, snap_ptr, hparams)
+    final_bin = os.path.join(args.out, "autodidact-final.bin")
+    export_weights(policy.cpu(), final_bin)
+    log(f"done at step {step}; fp16 export -> {final_bin} "
+        f"({os.path.getsize(final_bin)} bytes)")
+    logf.close()
+
+
+if __name__ == "__main__":
+    main()
