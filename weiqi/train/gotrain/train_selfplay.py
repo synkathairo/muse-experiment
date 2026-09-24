@@ -113,6 +113,10 @@ def evaluate(policy, opponent_fn, n_games, device, seed=12345, max_plies=None):
     """Win rate of the greedy learner vs opponent_fn (learner alternates color)."""
     env = SelfPlayGo(num_envs=n_games, seed=seed,
                      max_plies=max_plies or 3 * 9 * 9, opponent_fn=opponent_fn)
+    # stagger starting colors: without this every env's first game has the
+    # learner as Black, and greedy-vs-greedy self-play is deterministic, so the
+    # "win rate" would really be one game repeated n_games times.
+    env.color_counter[:] = np.arange(n_games) % 2
     obs = env.reset()
     wins = 0
     played = 0
