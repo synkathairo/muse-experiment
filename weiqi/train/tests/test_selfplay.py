@@ -372,6 +372,22 @@ class TestPPO(unittest.TestCase):
         lr_now = args.lr * max(0.0, 1.0 - 330 / total_iters)
         self.assertGreater(lr_now, 0.0)
 
+    def test_resume_explicit_cli_overrides_checkpoint(self):
+        # 2026-09-24: user resumed with --total-steps 3000000; it was silently
+        # reverted to the checkpoint's 200000 and the run exited immediately
+        # ("done at step 200704"). Explicit flags must win over the checkpoint.
+        import argparse
+        from gotrain.train_selfplay import apply_resumed_hparams
+        args = argparse.Namespace(out="runs/smoke", device="auto", total_steps=3000000,
+                                  lr=2.5e-4, seed=7, num_envs=32, rollout_steps=128)
+        ck = {"hparams": {"out": "runs/smoke", "device": "auto",
+                          "total_steps": 200000, "lr": 2.5e-4, "seed": 7,
+                          "num_envs": 32, "rollout_steps": 128}}
+        apply_resumed_hparams(args, ck, explicit={"total_steps"})
+        self.assertEqual(args.total_steps, 3000000)  # explicit CLI wins
+        self.assertEqual(args.lr, 2.5e-4)             # rest still from checkpoint
+        self.assertEqual(args.seed, 7)
+
 
 class TestEvaluateTally(unittest.TestCase):
     def test_tally_counts_all_when_room(self):

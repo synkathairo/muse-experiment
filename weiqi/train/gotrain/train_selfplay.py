@@ -37,6 +37,7 @@ only to override, e.g. --device cpu when debugging a backend quirk):
 import argparse
 import json
 import os
+import sys
 import time
 
 import numpy as np
@@ -231,19 +232,34 @@ def load_ckpt(path, policy, optimizer, snapshot, device):
     return ck
 
 
-def apply_resumed_hparams(args, ck):
+def explicit_cli_flags(argv=None):
+    """--flag names (underscore form) explicitly present on the command line."""
+    out = set()
+    for tok in (sys.argv[1:] if argv is None else argv):
+        if tok.startswith("--"):
+            out.add(tok[2:].split("=")[0].replace("-", "_"))
+    return out
+
+
+def apply_resumed_hparams(args, ck, explicit=None):
     """Restore a resumed run's hyperparameters from its checkpoint.
 
-    Only --out and --device stay as given on the CLI (run directory and launch
-    environment are the resumer's choice); everything else reverts to the
-    checkpoint's values. Skipping this silently keeps argparse defaults -- e.g.
-    --total-steps falls back to 2M -- which corrupts the LR schedule and can
-    even make it negative (gradient ASCENT, destroying the policy in one iter).
+    --out and --device always stay as given on the CLI (run directory and
+    launch environment are the resumer's choice). Any other flag explicitly
+    passed on the CLI also wins -- e.g. --total-steps 3000000 extends the
+    run instead of being silently reverted to the checkpoint's value (which
+    made a resumed run exit immediately with "done at step 200704").
+    Everything not explicitly given reverts to the checkpoint's values:
+    keeping argparse defaults here corrupts the LR schedule (it can even go
+    negative -> gradient ascent, destroying the policy in one iter).
     Returns the restored hparams dict.
     """
+    if explicit is None:
+        explicit = explicit_cli_flags()
     for k, v in ck.get("hparams", {}).items():
-        if k not in ("out", "device"):
-            setattr(args, k, v)
+        if k in ("out", "device") or k in explicit:
+            continue
+        setattr(args, k, v)
     return {k: v for k, v in vars(args).items() if k != "resume"}
 
 
