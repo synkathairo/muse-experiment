@@ -1,0 +1,9 @@
+[package]
+name = "weiqi-engine"
+version = "0.1.0"
+edition = "2021"
+description = "Pure-Rust 9x9 Go rules, feature encoder, and hand-rolled neural-net inference for the weiqi demo"
+
+[lib]
+name = "weiqi_engine"
+path = "src/lib.rs"
