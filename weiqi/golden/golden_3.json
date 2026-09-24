@@ -1,0 +1,6 @@
+{
+  "index": 3,
+  "description": "pass as last move, black to play",
+  "sgf": "(;GM[1]FF[4]SZ[9];B[cc];W[];B[gc])",
+  "torch_seed": 42
+}

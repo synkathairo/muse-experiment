@@ -1,0 +1,6 @@
+{
+  "index": 0,
+  "description": "empty board, black to play",
+  "sgf": "(;GM[1]FF[4]SZ[9])",
+  "torch_seed": 42
+}

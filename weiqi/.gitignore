@@ -1,0 +1,7 @@
+# never commit raw data or training state
+data/
+exports/
+runs/
+*.pt
+__pycache__/
+.venv/

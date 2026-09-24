@@ -1,0 +1,6 @@
+{
+  "index": 2,
+  "description": "capture: black to play captures the white stone at fe",
+  "sgf": "(;GM[1]FF[4]SZ[9];B[de];W[ee];B[ed];W[aa];B[ef];W[ii])",
+  "torch_seed": 42
+}

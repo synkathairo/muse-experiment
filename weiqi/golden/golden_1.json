@@ -1,0 +1,6 @@
+{
+  "index": 1,
+  "description": "opening: two stones each, white to play, last move marked",
+  "sgf": "(;GM[1]FF[4]SZ[9];B[cc];W[gg];B[gc];W[cg])",
+  "torch_seed": 42
+}
