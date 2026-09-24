@@ -88,6 +88,56 @@ def random_opponent(obs, masks):
     return actions
 
 
+def _captures_if(own, opp, r, c):
+    """Stones captured by playing (r, c): adjacent opponent groups whose only
+    liberty is (r, c). `own`/`opp` are (9,9) bool arrays from the side to move's
+    perspective. Only called on legal moves (suicide/ko already masked out)."""
+    caps = 0
+    seen = np.zeros((9, 9), dtype=bool)
+    for dr, dc in ((1, 0), (-1, 0), (0, 1), (0, -1)):
+        nr, nc = r + dr, c + dc
+        if not (0 <= nr < 9 and 0 <= nc < 9) or not opp[nr, nc] or seen[nr, nc]:
+            continue
+        stack, stones, libs = [(nr, nc)], 0, set()
+        seen[nr, nc] = True
+        while stack:
+            sr, sc = stack.pop()
+            stones += 1
+            for dr2, dc2 in ((1, 0), (-1, 0), (0, 1), (0, -1)):
+                ar, ac = sr + dr2, sc + dc2
+                if 0 <= ar < 9 and 0 <= ac < 9:
+                    if not own[ar, ac] and not opp[ar, ac]:
+                        if (ar, ac) != (r, c):
+                            libs.add((ar, ac))
+                    elif opp[ar, ac] and not seen[ar, ac]:
+                        seen[ar, ac] = True
+                        stack.append((ar, ac))
+        if not libs:
+            caps += stones
+    return caps
+
+
+def greedy_capture_opponent(obs, masks):
+    """1-ply greedy tactical bot: maximizes immediate stones captured (random
+    tie-break, pass loses ties); with nothing to capture, plays a random
+    non-pass move. First rung above random on the eval ladder."""
+    B = masks.shape[0]
+    actions = np.empty(B, dtype=np.int64)
+    for b in range(B):
+        own = obs[b, 0] > 0.5
+        opp = obs[b, 1] > 0.5
+        legal = np.flatnonzero(masks[b])
+        best, best_caps = [], -1
+        for i in legal:
+            caps = -1 if i == 81 else _captures_if(own, opp, i // 9, i % 9)
+            if caps > best_caps:
+                best, best_caps = [i], caps
+            elif caps == best_caps:
+                best.append(i)
+        actions[b] = np.random.choice(best)
+    return actions
+
+
 def make_snapshot_opponent(snapshot_net, device, greedy=False):
     """opponent_fn playing the frozen snapshot (sampled, or greedy for eval)."""
     snapshot_net.eval()
@@ -384,10 +434,14 @@ def main():
         eval_str = ""
         if args.eval_every and ppo_iter % args.eval_every == 0:
             wr_rand = evaluate(policy, random_opponent, args.eval_games, device)
+            wr_greedy = evaluate(policy, greedy_capture_opponent,
+                                 args.eval_games, device)
             wr_snap = evaluate(policy, make_snapshot_opponent(snapshot, device,
                                                              greedy=True),
                                args.eval_games, device)
-            eval_str = f" eval_vs_random={wr_rand:.2f} eval_vs_snapshot={wr_snap:.2f}"
+            eval_str = (f" eval_vs_random={wr_rand:.2f}"
+                        f" eval_vs_greedy={wr_greedy:.2f}"
+                        f" eval_vs_snapshot={wr_snap:.2f}")
 
         sps = (step - step0) / (time.time() - t0)
         ep_r = f"{np.mean(ep_rews):+.3f}" if ep_rews else "n/a"
