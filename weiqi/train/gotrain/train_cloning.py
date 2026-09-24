@@ -135,10 +135,11 @@ def main():
     log(f"start: {json.dumps(hparams)} resuming_at={step}")
     t0 = time.time()
     model.train()
-    while step < args.max_steps:
+    stopped = False
+    while step < args.max_steps and not stopped:
         perm = torch.randperm(n_train)
         for s in range(0, n_train, args.batch_size):
-            if step >= args.max_steps:
+            if step >= args.max_steps or stopped:
                 break
             b = perm[s:s + args.batch_size]
             xb = torch.from_numpy(np.asarray(Xtr[b]))
@@ -180,7 +181,7 @@ def main():
                     bad_evals += 1
                     if args.patience and bad_evals >= args.patience:
                         log(f"early stop: no val_acc improvement for {bad_evals} evals")
-                        step = args.max_steps  # break outer loops
+                        stopped = True
                         break
 
     save_ckpt(os.path.join(args.out, "latest.pt"), model, opt,

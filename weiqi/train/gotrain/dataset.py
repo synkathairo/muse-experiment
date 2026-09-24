@@ -47,7 +47,8 @@ def game_to_pairs(game):
     pairs = []
     for color_s, move in game.moves:
         color = rules.BLACK if color_s == "B" else rules.WHITE
-        assert color == board.to_play, "SGF color order diverged from replay"
+        if color != board.to_play:
+            break  # color order diverged (e.g. odd setup): keep the good prefix
         own = board.stones(color)
         opp = board.stones(rules.opponent(color))
         planes = features.encode(

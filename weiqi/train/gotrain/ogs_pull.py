@@ -45,10 +45,12 @@ def api_get(url, delay):
             raise
 
 
-def api_get_text(url, delay):
-    req = urllib.request.Request(url, headers={"User-Agent": UA})
+def fetch_sgf_text(gid, delay):
+    """Fetch one SGF, honoring 429s. Returns text or None."""
+    url = f"{API}/api/v1/games/{gid}/sgf"
     while True:
         time.sleep(delay)
+        req = urllib.request.Request(url, headers={"User-Agent": UA})
         try:
             with urllib.request.urlopen(req, timeout=30) as r:
                 return r.read().decode("utf-8", errors="replace")
@@ -58,7 +60,38 @@ def api_get_text(url, delay):
                 print(f"  429, sleeping {wait}s", flush=True)
                 time.sleep(wait)
                 continue
-            raise
+            return None
+        except Exception as e:
+            print(f"  game {gid}: {e}", flush=True)
+            return None
+
+
+def phase2_download(game_ids, sgf_dir, delay, workers):
+    import threading
+    from concurrent.futures import ThreadPoolExecutor
+    todo = [gid for gid in game_ids
+            if not os.path.exists(os.path.join(sgf_dir, f"{gid}.sgf"))]
+    print(f"downloading {len(todo)} SGFs ({workers} workers)...", flush=True)
+    done = [0]
+    lock = threading.Lock()
+
+    def one(gid):
+        text = fetch_sgf_text(gid, delay)
+        ok = bool(text and "GM[1]" in text)
+        if ok:
+            with open(os.path.join(sgf_dir, f"{gid}.sgf"), "w") as f:
+                f.write(text)
+        with lock:
+            done[0] += 1
+            if done[0] % 500 == 0:
+                print(f"  {done[0]}/{len(todo)} SGFs", flush=True)
+        return ok
+
+    with ThreadPoolExecutor(max_workers=workers) as ex:
+        results = list(ex.map(one, todo))
+    n = sum(results)
+    print(f"phase 2 done: {n} SGFs in {sgf_dir}", flush=True)
+    return n
 
 
 def is_bot(player_obj):
@@ -67,19 +100,8 @@ def is_bot(player_obj):
     return "bot" in ui.split() or "bot" in name.lower()
 
 
-def main():
-    ap = argparse.ArgumentParser()
-    ap.add_argument("--out", required=True)
-    ap.add_argument("--max-games", type=int, default=80000)
-    ap.add_argument("--max-players", type=int, default=1500)
-    ap.add_argument("--delay", type=float, default=0.7,
-                    help="seconds between API requests")
-    ap.add_argument("--seed-ladder-size", type=int, default=400,
-                    help="use top-N ladder members as seeds")
-    args = ap.parse_args()
-
-    sgf_dir = os.path.join(args.out, "sgf")
-    os.makedirs(sgf_dir, exist_ok=True)
+def phase1_discovery(args):
+    """Crawl players -> ranked finished 9x9 games; returns list of game ids."""
     manifest_path = os.path.join(args.out, "manifest.jsonl")
 
     seen_games = set()
@@ -160,26 +182,44 @@ def main():
     finally:
         manifest.close()
     print(f"phase 1 done: {len(seen_games)} games from {n_players} players", flush=True)
+    return list(seen_games)
+
+
+def run(args):
+    sgf_dir = os.path.join(args.out, "sgf")
+    os.makedirs(sgf_dir, exist_ok=True)
+    if args.phase2_only:
+        # resume: read game ids straight from the existing manifest
+        man = os.path.join(args.out, "manifest.jsonl")
+        seen_games = []
+        with open(man) as f:
+            for line in f:
+                line = line.strip()
+                if line:
+                    seen_games.append(json.loads(line)["id"])
+        print(f"phase2-only: {len(seen_games)} games in manifest", flush=True)
+    else:
+        seen_games = phase1_discovery(args)
 
     # phase 2: download SGFs
-    todo = [gid for gid in seen_games
-            if not os.path.exists(os.path.join(sgf_dir, f"{gid}.sgf"))]
-    print(f"downloading {len(todo)} SGFs...", flush=True)
-    done = 0
-    for gid in todo:
-        try:
-            text = api_get_text(f"{API}/api/v1/games/{gid}/sgf", args.delay)
-        except Exception as e:
-            print(f"  game {gid}: {e}", flush=True)
-            continue
-        if "GM[1]" not in text:
-            continue
-        with open(os.path.join(sgf_dir, f"{gid}.sgf"), "w") as f:
-            f.write(text)
-        done += 1
-        if done % 500 == 0:
-            print(f"  {done}/{len(todo)} SGFs", flush=True)
-    print(f"phase 2 done: {done} SGFs in {sgf_dir}", flush=True)
+    phase2_download(seen_games, sgf_dir, args.delay, args.workers)
+
+
+def main():
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--out", required=True)
+    ap.add_argument("--max-games", type=int, default=80000)
+    ap.add_argument("--max-players", type=int, default=1500)
+    ap.add_argument("--delay", type=float, default=0.7,
+                    help="seconds between API requests")
+    ap.add_argument("--seed-ladder-size", type=int, default=400,
+                    help="use top-N ladder members as seeds")
+    ap.add_argument("--workers", type=int, default=3,
+                    help="parallel SGF download workers")
+    ap.add_argument("--phase2-only", action="store_true",
+                    help="skip discovery; download SGFs for manifest.jsonl only")
+    args = ap.parse_args()
+    run(args)
 
 
 if __name__ == "__main__":
