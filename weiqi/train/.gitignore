@@ -1,0 +1,6 @@
+*.log
+data/
+runs/
+exports/
+.venv/
+__pycache__/
