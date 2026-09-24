@@ -10,7 +10,7 @@ import unittest
 import numpy as np
 import torch
 
-from gotrain import features, net, rules, sgf
+from gotrain import dataset, features, net, rules, sgf
 from gotrain.export import export_weights, read_export
 
 # A real 9x9 game, downloaded from OGS (game 73233171, Sadaharu 6d vs
@@ -136,6 +136,15 @@ class TestSGF(unittest.TestCase):
         g = sgf.parse_sgf("(;GM[1]FF[4]SZ[9]RE['B+R']PB['foo'];B[aa])")
         self.assertEqual(g.result, "B+R")
         self.assertEqual(g.black_name, "foo")
+
+    def test_handicap_white_to_move(self):
+        g = sgf.parse_sgf("(;GM[1]FF[4]SZ[9]HA[2]AB[cc][gg]RE[W+R];W[ee];B[aa])")
+        self.assertEqual(g.to_play, "W")
+        pairs = dataset.game_to_pairs(g)
+        # white's move replays; the pair is from white's perspective, and
+        # white won, so z=+1
+        self.assertEqual(len(pairs), 2)
+        self.assertEqual(pairs[0][2], 1.0)
 
 
 class TestExport(unittest.TestCase):

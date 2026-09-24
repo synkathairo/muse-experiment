@@ -19,6 +19,7 @@ class Game:
     handicap: int = 0
     black_name: str = ""
     white_name: str = ""
+    to_play: str = "B"  # who moves first after setup (PL[], else handicap convention)
 
 
 def sgf_point(s, size):
@@ -164,6 +165,11 @@ def parse_sgf(text):
         p = sgf_point(v, 9)
         if p:
             game.setup_white.append(p)
+    pl = (root.get("PL", [""])[0] or "").strip().upper()
+    if pl in ("B", "W"):
+        game.to_play = pl
+    elif game.setup_black and not game.setup_white:
+        game.to_play = "W"  # handicap: black placed stones, white moves first
     for node in seq[1:]:
         for color in ("B", "W"):
             if color in node:

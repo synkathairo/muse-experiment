@@ -43,6 +43,7 @@ def game_to_pairs(game):
         board.grid[r][c] = rules.BLACK
     for r, c in game.setup_white:
         board.grid[r][c] = rules.WHITE
+    board.to_play = rules.BLACK if game.to_play == "B" else rules.WHITE
     z_black = sgf.result_to_z(game.result)
     pairs = []
     for color_s, move in game.moves:
