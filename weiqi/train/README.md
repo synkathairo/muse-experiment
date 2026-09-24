@@ -72,8 +72,9 @@ caffeinate -i uv run python -m gotrain.train_selfplay \
 
 Run it under `tmux` (or `nohup`) so closing the terminal doesn't kill it;
 keep the machine plugged in and set it to never sleep. Speed is dominated
-by the single-process Python game simulation, not the net, so expect roughly
-the pilot's ~200 steps/sec: 100M steps ≈ 6 days, 200M ≈ 12 days.
+by the single-process Python game simulation, not the net. Measured
+2026-09-24 on an M1 Mac (MPS): ~450–480 steps/sec, so 100M steps ≈ 2.5 days
+and 200M ≈ 5 days. (The old CPU pilot managed ~200 steps/sec: 100M ≈ 6 days.)
 
 Resume after any interruption (optimizer, step, and RNG state all restore):
 
