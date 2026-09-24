@@ -126,8 +126,9 @@ def evaluate(policy, opponent_fn, n_games, device, seed=12345, max_plies=None):
             played += 1
             if rewards[i] > 0:
                 wins += 1
-        if np.any(dones):
-            obs[env.done] = env.reset(np.where(env.done)[0])
+        done_idxs = np.where(dones)[0]  # snapshot: env.reset() clears env.done
+        if len(done_idxs):
+            obs[done_idxs] = env.reset(done_idxs)
     return wins / max(1, played)
 
 
@@ -243,6 +244,7 @@ def main():
     T, N = args.rollout_steps, args.num_envs
     total_iters = max(1, (args.total_steps - step + T * N - 1) // (T * N))
     t0 = time.time()
+    step0 = step  # for honest steps/sec across resumes
     policy.train()
 
     while step < args.total_steps:
@@ -333,7 +335,7 @@ def main():
                                args.eval_games, device)
             eval_str = f" eval_vs_random={wr_rand:.2f} eval_vs_snapshot={wr_snap:.2f}"
 
-        sps = step / (time.time() - t0)
+        sps = (step - step0) / (time.time() - t0)
         ep_r = f"{np.mean(ep_rews):+.3f}" if ep_rews else "n/a"
         ep_l = f"{np.mean(ep_lens):.0f}" if ep_lens else "n/a"
         log(f"iter {ppo_iter}: step {step} sps={sps:.0f} ep_rew={ep_r} "

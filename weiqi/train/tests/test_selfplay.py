@@ -184,6 +184,16 @@ class TestPPO(unittest.TestCase):
             # locked export size: 130522 params x fp16
             self.assertEqual(os.path.getsize(out), EXPECTED_PARAMS * 2)
 
+    def test_evaluate_finishes_and_scores(self):
+        # regression: evaluate() once crashed resetting finished envs
+        # (env.reset clears env.done before the boolean-mask assignment)
+        from gotrain.train_selfplay import evaluate
+        torch.manual_seed(0)
+        wr = evaluate(GoNet(), random_opponent, n_games=6,
+                      device=torch.device("cpu"), seed=0)
+        self.assertGreaterEqual(wr, 0.0)
+        self.assertLessEqual(wr, 1.0)
+
     def test_masked_sampling_never_illegal(self):
         # policy heavily favoring an illegal move must still sample legally
         from gotrain.train_selfplay import sample_actions
