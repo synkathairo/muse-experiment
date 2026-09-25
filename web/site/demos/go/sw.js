@@ -5,7 +5,7 @@
  * demo works offline after the first visit. No UI for this — it simply kicks
  * in when the network is gone. */
 
-const CACHE_NAME = 'weiqi-go-v1';
+const CACHE_NAME = 'weiqi-go-v2';
 
 const PRECACHE = [
   './',

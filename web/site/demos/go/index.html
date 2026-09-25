@@ -372,8 +372,9 @@
 
 		// territory shading (game over only): translucent wash on empty points,
 		// cool for Black's territory, warm for White's. Counts agree with the
-		// area scores shown in the result line.
-		if (game.is_over()) {
+		// area scores shown in the result line. Guarded: a stale cached WASM
+		// from before this binding existed shouldn't break rendering.
+		if (game.is_over() && typeof game.territory === 'function') {
 			const terr = game.territory();
 			for (let i = 0; i < 81; i++) {
 				const t = terr[i];
