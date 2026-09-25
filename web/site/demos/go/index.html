@@ -16,6 +16,7 @@
 		.panel select, .panel input[type="range"] { width: 100%; }
 		.row { display: flex; gap: 0.5em; align-items: center; margin: 0.6em 0; }
 		.row button { flex: 1; }
+		button:disabled { opacity: 0.35; cursor: default; }
 		#status { font-family: monospace; font-size: 0.9em; background: #f4f4f4;
 		          padding: 0.7em; border-radius: 6px; min-height: 2.6em; }
 		#result { font-weight: bold; margin: 0.6em 0; }
@@ -265,8 +266,18 @@
 		maybeBotMove();
 	}
 
+	// Buttons reflect what can actually be done right now: Pass is only for a
+	// human turn, Pause only when a bot is in the game; New game always works.
+	function updateButtons() {
+		const over = !game || game.is_over();
+		const botInGame = mode !== 'human-human';
+		$('passBtn').disabled = over || isBotTurn();
+		$('pauseBtn').disabled = over || !botInGame;
+	}
+
 	function updateStatus() {
 		if (!game) return;
+		updateButtons();
 		const toMove = game.to_move() === 0 ? 'Black' : 'White';
 		let s = game.is_over() ? 'game over · '
 			: toMove + ' to move · ';
