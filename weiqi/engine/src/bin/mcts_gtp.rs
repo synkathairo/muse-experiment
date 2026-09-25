@@ -69,6 +69,7 @@ fn main() {
     let args: Vec<String> = std::env::args().collect();
     let mut blob_path = None;
     let mut sims: u32 = 100;
+    let mut dirichlet_eps: f32 = 0.15; // match the demo toggle: deliberate at low sims
     let mut i = 1;
     while i < args.len() {
         match args[i].as_str() {
@@ -79,6 +80,10 @@ fn main() {
             "--sims" => {
                 i += 1;
                 sims = args[i].parse().expect("--sims needs a number");
+            }
+            "--dirichlet-eps" => {
+                i += 1;
+                dirichlet_eps = args[i].parse().expect("--dirichlet-eps needs a number");
             }
             other => {
                 eprintln!("unknown arg: {other}");
@@ -93,7 +98,7 @@ fn main() {
     let eval = NetEval { net: &net };
     let cfg = SearchConfig {
         simulations: sims.max(1),
-        dirichlet_eps: 0.15, // match the demo toggle: deliberate at low sims
+        dirichlet_eps,
         ..SearchConfig::default()
     };
 
