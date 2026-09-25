@@ -148,10 +148,13 @@ impl WasmNet {
 
     /// PUCT search move for `game`'s current position: `simulations` tree
     /// iterations guided by this net's policy (priors) and value (leaves).
-    /// Returns a move index (0–80 point, 81 pass), with a touch of root
-    /// Dirichlet noise so repeated calls vary slightly.
+    /// Returns a move index (0–80 point, 81 pass). Uses mild root Dirichlet
+    /// noise (eps 0.15): at 50–200 simulations a peaked policy would otherwise
+    /// let PUCT rubber-stamp the top prior, and the noise forces the search
+    /// to seriously visit the runner-up candidates so the value head can
+    /// arbitrate among them. Deterministic for a fixed position and sim count.
     pub fn search(&self, game: &WasmGame, simulations: u32) -> usize {
-        search_best_move(game, self, simulations, 0.05)
+        search_best_move(game, self, simulations, 0.15)
     }
 }
 

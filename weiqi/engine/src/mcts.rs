@@ -386,6 +386,32 @@ mod tests {
     }
 
     #[test]
+    fn overturns_peaked_prior_on_blunder() {
+        // Same capture, but the prior puts 0.85 mass on a wasted move (80).
+        // PUCT explores 80 first (bonus ratio 0.85/0.002 ≈ 430:1, times
+        // c_puct=1.5), so the value signal needs enough simulations to reach
+        // the capture (41) and then drag the visit counts over. Measured flip
+        // point is ~2000 sims; this pins the relationship between prior
+        // sharpness and the sim budget a real search needs.
+        struct PeakedBlunder;
+        impl Evaluator for PeakedBlunder {
+            fn evaluate(&self, game: &Game) -> Eval {
+                let base = MaterialEval.evaluate(game);
+                let mut policy = base.policy;
+                let legal = game.legal_moves();
+                let n_legal = legal.iter().filter(|&&b| b).count() as f32;
+                for i in 0..N_MOVES {
+                    policy[i] = if i == 80 { 0.85 } else if legal[i] { 0.15 / n_legal } else { 0.0 };
+                }
+                Eval { policy, value: base.value }
+            }
+        }
+        let g = capture_position();
+        let cfg = SearchConfig { simulations: 2500, ..Default::default() };
+        assert_eq!(search(&g, &PeakedBlunder, &cfg), 41);
+    }
+
+    #[test]
     fn deterministic_given_seed() {
         let g = capture_position();
         let cfg = SearchConfig {
