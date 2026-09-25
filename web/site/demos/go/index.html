@@ -17,6 +17,7 @@
 		.row { display: flex; gap: 0.5em; align-items: center; margin: 0.6em 0; }
 		.row button { flex: 1; }
 		button:disabled { opacity: 0.35; cursor: default; }
+		input[type=range]:disabled { opacity: 0.35; }
 		#status { font-family: monospace; font-size: 0.9em; background: #f4f4f4;
 		          padding: 0.7em; border-radius: 6px; min-height: 2.6em; }
 		#result { font-weight: bold; margin: 0.6em 0; }
@@ -88,6 +89,8 @@
 		<label for="temp">Bot temperature: <span id="tempVal">0.3</span></label>
 		<input type="range" id="temp" min="0" max="2" step="0.1" value="0.3" />
 		<p class="hint">0 = greedy (strongest move every time), higher = more playful.</p>
+		<p class="hint" id="tempSearchNote" hidden>Search is on: the bot plays its
+		most-visited move — temperature only applies when search is off.</p>
 
 		<div class="row">
 			<label for="search">Bot search</label>
@@ -469,7 +472,16 @@
 		temperature = +e.target.value;
 		$('tempVal').textContent = temperature === 0 ? 'greedy' : temperature.toFixed(1);
 	});
-	$('search').addEventListener('change', e => { searchSims = +e.target.value; });
+	$('search').addEventListener('change', e => {
+		searchSims = +e.target.value;
+		syncTempEnabled();
+	});
+	function syncTempEnabled() {
+		const searching = searchSims > 0;
+		$('temp').disabled = searching;
+		$('tempSearchNote').hidden = !searching;
+	}
+	syncTempEnabled();
 	$('heat').addEventListener('change', e => { showHeat = e.target.checked; render(); });
 	$('komi').addEventListener('change', e => {
 		komi = +e.target.value;
