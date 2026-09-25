@@ -11,6 +11,7 @@ Usage:
 
 import argparse
 import json
+import shlex
 import subprocess
 import sys
 import time
@@ -113,7 +114,9 @@ def play_game(gnugo, net, net_is_black, move_timeout):
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("--checkpoint", required=True)
+    ap.add_argument("--checkpoint", default=None,
+                    help="torch checkpoint for the Python GTP engine "
+                         "(not needed with --engine-cmd)")
     ap.add_argument("--levels", type=int, nargs="+", default=[1, 3, 5])
     ap.add_argument("--games", type=int, default=4,
                     help="games per level (alternating colors)")
@@ -121,6 +124,10 @@ def main():
     ap.add_argument("--gnugo", default="gnugo")
     ap.add_argument("--temperature", type=float, default=0.0,
                     help="net move temperature: 0 = greedy (default), >0 samples")
+    ap.add_argument("--engine-cmd", default=None,
+                    help="override the net GTP engine command (shlex-split). "
+                         "E.g. \"./target/release/mcts_gtp --blob <w.bin> --sims 100\". "
+                         "When set, --checkpoint is not needed.")
     args = ap.parse_args()
 
     py = sys.executable
@@ -129,8 +136,14 @@ def main():
         gnugo = GTPClient([args.gnugo, "--mode", "gtp", "--quiet",
                            "--boardsize", "9", "--chinese-rules",
                            "--komi", "7.5", "--level", str(level)])
-        net = GTPClient([py, "-m", "gotrain.gtp", "--checkpoint", args.checkpoint,
-                         "--temperature", str(args.temperature)])
+        if args.engine_cmd:
+            net_argv = shlex.split(args.engine_cmd)
+        else:
+            if not args.checkpoint:
+                ap.error("--checkpoint is required unless --engine-cmd is given")
+            net_argv = [py, "-m", "gotrain.gtp", "--checkpoint", args.checkpoint,
+                        "--temperature", str(args.temperature)]
+        net = GTPClient(net_argv)
         # sanity: both speak GTP
         for eng, nm in ((gnugo, "gnugo"), (net, "net")):
             ok, resp = eng.command("protocol_version", timeout=30)
