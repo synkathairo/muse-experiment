@@ -59,23 +59,32 @@ def set_komi(k):
 
 
 # ---------------------------------------------------------------------------
-# Tromp-Taylor area scoring
+# Tromp-Taylor area scoring (+ ownership labels for the auxiliary heads)
 # ---------------------------------------------------------------------------
-def score(board):
-    """Return (black_score, white_score) with komi added to White.
+def _score_and_ownership(board):
+    """Shared Tromp-Taylor core.
 
-    Tromp-Taylor: score = stones on board + empty points whose bordering stones
-    are all one color. Empty regions touching both colors are neutral.
+    Returns ((black_score, white_score), own) where own is an (n, n) int8 grid:
+    +1 black-owned, -1 white-owned, 0 neutral. Stones on the board count for
+    their color; empty regions are owned by their exclusive border color
+    (regions touching both colors are neutral).
+
+    NOTE (label noise): dead stones left on the board at game end are labeled
+    as owned by their own color. KataGo resolves this with full life/death
+    adjudication; we accept the noise — the signal is dense and mostly right.
     """
     n = board.size
+    own = np.zeros((n, n), dtype=np.int8)
     black_stones = white_stones = 0
     for r in range(n):
         for c in range(n):
             v = board.grid[r][c]
             if v == BLACK:
                 black_stones += 1
+                own[r, c] = 1
             elif v == WHITE:
                 white_stones += 1
+                own[r, c] = -1
 
     black_terr = white_terr = 0
     seen = [[False] * n for _ in range(n)]
@@ -84,13 +93,13 @@ def score(board):
             if board.grid[r][c] != EMPTY or seen[r][c]:
                 continue
             # flood-fill one empty region, tracking bordering colors
-            region = 0
+            cells = []
             borders = set()
             stack = [(r, c)]
             seen[r][c] = True
             while stack:
                 sr, sc = stack.pop()
-                region += 1
+                cells.append((sr, sc))
                 for dr, dc in ((1, 0), (-1, 0), (0, 1), (0, -1)):
                     nr, nc = sr + dr, sc + dc
                     if 0 <= nr < n and 0 <= nc < n:
@@ -103,11 +112,50 @@ def score(board):
                         elif v == WHITE:
                             borders.add(WHITE)
             if borders == {BLACK}:
-                black_terr += region
+                black_terr += len(cells)
+                for sr, sc in cells:
+                    own[sr, sc] = 1
             elif borders == {WHITE}:
-                white_terr += region
+                white_terr += len(cells)
+                for sr, sc in cells:
+                    own[sr, sc] = -1
             # else: neutral (seki-like / dame) — counts for nobody
-    return (black_stones + black_terr, white_stones + white_terr + KOMI)
+    return (black_stones + black_terr, white_stones + white_terr + KOMI), own
+
+
+def score(board):
+    """Return (black_score, white_score) with komi added to White.
+
+    Tromp-Taylor: score = stones on board + empty points whose bordering stones
+    are all one color. Empty regions touching both colors are neutral.
+    """
+    (b, w), _ = _score_and_ownership(board)
+    return (b, w)
+
+
+def ownership_labels(board):
+    """(81,) float32 ownership targets in ABSOLUTE colors: +1 black owns,
+    -1 white owns, 0 neutral. See _score_and_ownership for the dead-stone
+    caveat. Use to_learner_perspective() before training — the net observes
+    the board from the side-to-move's perspective."""
+    _, own = _score_and_ownership(board)
+    return own.reshape(-1).astype(np.float32)
+
+
+def margin_label(board):
+    """float: black_score - white_score (komi included), Tromp-Taylor area
+    scoring. Absolute colors; convert with to_learner_perspective()."""
+    (b, w), _ = _score_and_ownership(board)
+    return float(b - w)
+
+
+def to_learner_perspective(own_abs, margin_abs, learner_color):
+    """Convert absolute ownership/margin labels to the learner's perspective,
+    matching the observation encoding (plane 0 = side to move): +1 means a
+    point owned by / score margin for the side to move."""
+    if learner_color == BLACK:
+        return own_abs, margin_abs
+    return -own_abs, -margin_abs
 
 
 def winner(board):

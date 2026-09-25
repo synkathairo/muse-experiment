@@ -88,6 +88,31 @@ Key flags: `--num-envs` (default 32), `--rollout-steps` (128),
 `--eval-every` (20 iters, `--eval-games` 20 vs random / greedy / snapshot),
 `--ckpt-every` (10 iters), `--seed`.
 
+## Ownership auxiliary heads (KataGo-style)
+
+`--ownership` adds two training-only heads to the locked trunk — KataGo's
+"ownership" (D. Wu, "Accelerating Self-Play Learning in Go",
+https://arxiv.org/abs/1912.02414): per-point ownership ($+1$/$-1$/$0$ from
+the side to move's perspective) and score margin ($(my-opp)/81$), labeled
+from each finished self-play game and trained as extra MSE losses in a
+separate phase after every PPO update. Tuning: `--aux-own-w` (default
+0.5), `--aux-margin-w` (default 0.5), `--aux-epochs` (default 2). With the
+flag off the run is plain policy/value PPO on the identical trunk, so the
+two legs are directly comparable.
+
+The model is always `GoNetAux` (locked trunk + aux heads). Resuming a
+plain `GoNet` checkpoint (e.g. the 15.5M run) trunk-maps automatically,
+with the aux heads randomly initialized:
+
+```bash
+caffeinate -i uv run python -m gotrain.train_selfplay \
+    --out runs/own_v1 --total-steps 100000000 --ownership \
+    --resume runs/smoke/latest.pt
+```
+
+The GTP/export/MCTS tools accept either checkpoint flavor (they read the
+trunk weights); the fp16 demo export never sees the aux heads.
+
 ## Checkpoints and logs
 
 - `runs/<name>/train.log` — one line per PPO iteration:

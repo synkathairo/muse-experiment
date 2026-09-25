@@ -21,6 +21,7 @@ import torch
 
 from . import features, rules, selfplay
 from .net import GoNet
+from .net_aux import to_gonet_state_dict
 
 COLS = "ABCDEFGHJKLMNOPQRST"  # GTP skips 'I'
 
@@ -178,7 +179,7 @@ def main():
     ck = torch.load(args.checkpoint, map_location="cpu", weights_only=False)
     sd = ck["model"] if isinstance(ck, dict) and "model" in ck else ck
     model = GoNet()
-    model.load_state_dict(sd)
+    model.load_state_dict(to_gonet_state_dict(sd))
     serve(GTPEngine(model, temperature=args.temperature))
 
 

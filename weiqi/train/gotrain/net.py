@@ -61,11 +61,21 @@ class GoNet(nn.Module):
         self.val_fc1 = nn.Linear(81, 32)
         self.val_fc2 = nn.Linear(32, 1)
 
-    def forward(self, x):
+    def features(self, x):
+        """Trunk feature map (B,64,9,9) after conv4, before the heads.
+
+        Param-neutral and export-neutral: adds no parameters and leaves
+        EXPORT_ORDER untouched, so the locked spec (PLAN.md §3) still holds.
+        Exists so training-only auxiliary heads (gotrain.net_aux) can read
+        the trunk without duplicating it; Rust inference is unaffected.
+        """
         t = torch.relu(self.conv1(x))
         t = torch.relu(self.conv2(t))
         t = torch.relu(self.conv3(t))
-        t = torch.relu(self.conv4(t))
+        return torch.relu(self.conv4(t))
+
+    def forward(self, x):
+        t = self.features(x)
         logits = self.pol_fc(self.pol_conv(t).flatten(1))
         v = torch.relu(self.val_fc1(self.val_conv(t).flatten(1)))
         value = torch.tanh(self.val_fc2(v)).squeeze(1)

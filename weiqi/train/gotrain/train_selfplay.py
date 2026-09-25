@@ -48,9 +48,12 @@ import torch
 import torch.nn.functional as F
 
 from .export import export_weights
-from .net import GoNet
+from .net import GoNet, N_POINTS
+from .net_aux import (GoNetAux, load_trunk_from_gonet, check_trunk_resume,
+                      to_gonet_state_dict)
 from .ppo import PPOConfig, compute_gae, ppo_update, explained_variance
-from .selfplay import SelfPlayGo, PASS, set_komi
+from .selfplay import (SelfPlayGo, PASS, set_komi, ownership_labels,
+                       margin_label, to_learner_perspective)
 
 # Frozen museum snapshots, log-spaced in env steps (cf. train_cloning.SNAP_STEPS,
 # which is in gradient steps — here the natural unit is env steps / PPO samples).
@@ -111,6 +114,40 @@ def greedy_actions(policy, obs_t, masks_t):
     return masked.argmax(dim=-1)
 
 
+def aux_update(policy, optimizer, cfg, obs, own_tgt, margin_tgt,
+               own_w, margin_w, epochs):
+    """Supervised auxiliary update on finished-game labels (KataGo-style).
+
+    obs: (B,6,9,9); own_tgt: (B,81) in {-1,0,1} from the side-to-move's
+    perspective; margin_tgt: (B,) = (my_score - opp_score)/81. Only steps
+    whose game finished inside the rollout carry labels (the caller filters).
+    Runs as a separate phase after the PPO update so the clipped trust
+    region never sees the supervised gradients. Returns mean losses.
+    """
+    policy.train()
+    B = obs.shape[0]
+    acc_own = acc_margin = 0.0
+    n = 0
+    for _ in range(epochs):
+        perm = torch.randperm(B, device=obs.device)
+        for s in range(0, B, cfg.minibatch_size):
+            idx = perm[s:s + cfg.minibatch_size]
+            _, _, own, margin = policy.forward_aux(obs[idx])
+            own_loss = F.mse_loss(own, own_tgt[idx])
+            margin_loss = F.mse_loss(margin, margin_tgt[idx])
+            loss = own_w * own_loss + margin_w * margin_loss
+            optimizer.zero_grad()
+            loss.backward()
+            torch.nn.utils.clip_grad_norm_(policy.parameters(),
+                                           cfg.max_grad_norm)
+            optimizer.step()
+            acc_own += own_loss.item()
+            acc_margin += margin_loss.item()
+            n += 1
+    return {"aux_own": acc_own / max(1, n),
+            "aux_margin": acc_margin / max(1, n)}
+
+
 def random_opponent(obs, masks, game_plies=None):
     """Uniform over legal moves. obs unused; signature matches opponent_fn."""
     B = masks.shape[0]
@@ -119,6 +156,26 @@ def random_opponent(obs, masks, game_plies=None):
         legal = np.flatnonzero(masks[b])
         actions[b] = np.random.choice(legal)
     return actions
+
+
+def attach_finished_game_labels(env, i, ep_step_idxs, b_own, b_margin,
+                                 b_aux_valid):
+    """Compute ownership/margin labels for env i's finished game and attach
+    them to the game's rollout steps.
+
+    Must be called BEFORE env.reset(i): reads env.boards[i] (the terminal
+    position) and env.learner_color[i] (still the finished episode's color).
+    b_own/b_margin/b_aux_valid are the (T, N[, 81]) rollout buffers.
+    """
+    own_abs = ownership_labels(env.boards[i])
+    mgn_abs = margin_label(env.boards[i])
+    own, mgn = to_learner_perspective(own_abs, mgn_abs,
+                                      int(env.learner_color[i]))
+    idx = torch.tensor(list(ep_step_idxs), dtype=torch.long)
+    b_own[idx, i] = torch.from_numpy(own)
+    # normalize by board size so the margin target is O(1)
+    b_margin[idx, i] = float(mgn) / N_POINTS
+    b_aux_valid[idx, i] = True
 
 
 def _captures_if(own, opp, r, c):
@@ -267,13 +324,39 @@ def save_ckpt(path, policy, optimizer, snapshot, step, ppo_iter, snap_ptr, hpara
     }, path)
 
 
+def _load_model_flexible(model, sd):
+    """Load a checkpoint model dict into a GoNetAux.
+
+    Accepts plain GoNet dicts (e.g. the 15.5M run) via trunk mapping — aux
+    heads keep their random init. Plain GoNet targets load plain dicts
+    untouched (existing save/load round-trip tests). Returns True when
+    trunk-mapped.
+    """
+    is_aux_target = any(k.startswith("trunk.") for k in model.state_dict())
+    sd_is_plain = ("conv1.weight" in sd
+                   and not any(k.startswith("trunk.") for k in sd))
+    if is_aux_target and sd_is_plain:
+        res = load_trunk_from_gonet(model, sd)
+        check_trunk_resume(res.missing_keys)
+        if res.unexpected_keys:
+            raise RuntimeError(
+                f"unexpected keys in trunk resume: {res.unexpected_keys}")
+        return True
+    model.load_state_dict(sd)
+    return False
+
+
 def load_ckpt(path, policy, optimizer, snapshot, device):
     ck = torch.load(path, map_location=device, weights_only=False)
-    policy.load_state_dict(ck["model"])
-    snapshot.load_state_dict(ck["opponent"])
+    trunk_mapped = _load_model_flexible(policy, ck["model"])
+    _load_model_flexible(snapshot, ck["opponent"])
     optimizer.load_state_dict(ck["optimizer"])
     torch.set_rng_state(ck["torch_rng"].cpu())
     np.random.set_state(ck["numpy_rng"])
+    if trunk_mapped:
+        print("trunk-mapped resume from a plain GoNet checkpoint "
+              "(e.g. the 15.5M run); aux heads randomly initialized",
+              flush=True)
     return ck
 
 
@@ -357,6 +440,22 @@ def main():
                     help="Dirichlet concentration for opening noise")
     ap.add_argument("--dirichlet-eps", type=float, default=0.25,
                     help="noise mixture weight for opening noise")
+    ap.add_argument("--ownership", action="store_true",
+                    help="enable KataGo-style auxiliary heads (Wu 2019): "
+                         "per-point ownership + score-margin targets from "
+                         "finished self-play games, trained as extra MSE "
+                         "losses after each PPO update. Off = plain "
+                         "policy/value PPO on the identical trunk.")
+    ap.add_argument("--aux-own-w", type=float, default=0.5,
+                    help="MSE weight for the ownership head (tanh outputs, "
+                         "targets in {-1,0,1} from the side to move's "
+                         "perspective)")
+    ap.add_argument("--aux-margin-w", type=float, default=0.5,
+                    help="MSE weight for the score-margin head (target = "
+                         "(my_score - opp_score)/81)")
+    ap.add_argument("--aux-epochs", type=int, default=2,
+                    help="supervised passes over labeled rollout steps per "
+                         "PPO iteration")
     ap.add_argument("--opp-refresh-every", type=int, default=10,
                     help="PPO iterations between opponent snapshot refreshes")
     ap.add_argument("--eval-every", type=int, default=20,
@@ -388,8 +487,12 @@ def main():
                     update_epochs=args.update_epochs,
                     minibatch_size=args.minibatch_size)
 
-    policy = GoNet().to(device)
-    snapshot = GoNet().to(device)   # frozen opponent; refreshed every K iters
+    # Always GoNetAux (locked GoNet trunk + training-only heads): one code
+    # path for both legs, so the ownership experiment isolates the learning
+    # signal. With --ownership off the aux heads get no gradients and the
+    # run is plain policy/value PPO on the identical trunk.
+    policy = GoNetAux().to(device)
+    snapshot = GoNetAux().to(device)   # frozen opponent; refreshed every K iters
     snapshot.load_state_dict(policy.state_dict())
     optimizer = torch.optim.Adam(policy.parameters(), lr=args.lr)
     hparams = {k: v for k, v in vars(args).items() if k != "resume"}
@@ -421,7 +524,10 @@ def main():
         logf.flush()
 
     log(f"start: {json.dumps(hparams)} resuming_at={step}")
-    log(f"device={device} params={policy.param_count()}")
+    log(f"device={device} params={policy.param_count()} "
+        f"(trunk {policy.trunk.param_count()}, locked GoNet spec)")
+    log(f"ownership_aux={args.ownership} aux_own_w={args.aux_own_w} "
+        f"aux_margin_w={args.aux_margin_w} aux_epochs={args.aux_epochs}")
 
     set_komi(args.train_komi)
     log(f"train_komi={args.train_komi}")
@@ -447,6 +553,10 @@ def main():
     step0 = step  # for honest steps/sec across resumes
     policy.train()
 
+    # Auxiliary labels only exist for games that finish inside the rollout;
+    # when --ownership is off (or both weights are 0) skip the bookkeeping.
+    aux_on = args.ownership and (args.aux_own_w > 0 or args.aux_margin_w > 0)
+
     while step < args.total_steps:
         # ---- rollout ------------------------------------------------------
         b_obs = torch.zeros(T, N, 6, 9, 9)
@@ -457,10 +567,18 @@ def main():
         b_terms = torch.zeros(T, N, dtype=torch.bool)
         b_truncs = torch.zeros(T, N, dtype=torch.bool)
         b_values = torch.zeros(T, N)
+        # per-step aux targets, filled at game end (labels are game-final)
+        b_own = torch.zeros(T, N, N_POINTS)
+        b_margin = torch.zeros(T, N)
+        b_aux_valid = torch.zeros(T, N, dtype=torch.bool)
+        # rollout-step indices belonging to each env's current episode
+        ep_steps = [[] for _ in range(N)]
         ep_rews, ep_lens = [], []
         last_obs, last_terms = None, None
 
         for t in range(T):
+            for i in range(N):
+                ep_steps[i].append(t)
             masks = env.legal_masks_learner()
             obs_t = torch.from_numpy(obs).to(device)
             masks_t = torch.from_numpy(masks).to(device)
@@ -489,6 +607,13 @@ def main():
             for i in np.where(dones)[0]:
                 ep_rews.append(float(rewards[i]))
                 ep_lens.append(int(lens[i]))
+                if aux_on:
+                    # labels from the finished board — BEFORE the reset below.
+                    # env.learner_color[i] is still the finished episode's
+                    # color, so the perspective conversion is exact.
+                    attach_finished_game_labels(env, i, ep_steps[i],
+                                                b_own, b_margin, b_aux_valid)
+                ep_steps[i] = []
             if t == T - 1:
                 # keep the pre-reset final obs: the bootstrap value must come
                 # from the actual final position, not a reset one. (Scored
@@ -525,6 +650,24 @@ def main():
                            flat(b_logps).to(device), flat(advantages).to(device),
                            flat(returns).to(device), flat(b_values).to(device),
                            flat(b_masks).to(device), lr_now=lr_now)
+
+        # ---- auxiliary ownership/margin update -------------------------------
+        # Separate phase after PPO: the clipped trust region never sees the
+        # supervised gradients. Only steps whose game finished in-rollout
+        # carry labels (b_aux_valid); the final partial games are excluded.
+        aux_str = ""
+        if aux_on:
+            valid = b_aux_valid.reshape(-1)
+            if bool(valid.any()):
+                vdev = valid.to(device)
+                aux_stats = aux_update(
+                    policy, optimizer, cfg,
+                    flat(b_obs).to(device)[vdev],
+                    flat(b_own).to(device)[vdev],
+                    flat(b_margin).to(device)[vdev],
+                    args.aux_own_w, args.aux_margin_w, args.aux_epochs)
+                aux_str = (f" aux_own={aux_stats['aux_own']:.4f}"
+                           f" aux_mgn={aux_stats['aux_margin']:.4f}")
 
         step += T * N
         ppo_iter += 1
@@ -563,12 +706,14 @@ def main():
         log(f"iter {ppo_iter}: step {step} sps={sps:.0f} ep_rew={ep_r} "
             f"ep_len={ep_l} pg={stats['pg_loss']:.4f} v={stats['v_loss']:.4f} "
             f"ent={stats['entropy']:.3f} kl={stats['approx_kl']:.4f} "
-            f"clipfrac={stats['clipfrac']:.3f} ev={ev:.3f}{eval_str}")
+            f"clipfrac={stats['clipfrac']:.3f} ev={ev:.3f}{aux_str}{eval_str}")
 
     save_ckpt(os.path.join(args.out, "latest.pt"), policy, optimizer, snapshot,
               step, ppo_iter, snap_ptr, hparams)
     final_bin = os.path.join(args.out, "autodidact-final.bin")
-    export_weights(policy.cpu(), final_bin)
+    # export the locked trunk only: the fp16 format (and the Rust/WASM demo
+    # path) never sees the training-only aux heads.
+    export_weights(policy.trunk.cpu(), final_bin)
     log(f"done at step {step}; fp16 export -> {final_bin} "
         f"({os.path.getsize(final_bin)} bytes)")
     logf.close()

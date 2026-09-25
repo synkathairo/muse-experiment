@@ -89,6 +89,28 @@ The exhibit's time-machine is literally these approximations sharpening
 toward equilibrium: random flailing → knows the rules → captures greedily
 → positional play.
 
+### Auxiliary heads: ownership + score margin (KataGo's recipe)
+
+Win/loss is a sparse, high-variance training signal — one bit per game.
+Following KataGo — D. Wu, "Accelerating Self-Play Learning in Go"
+(https://arxiv.org/abs/1912.02414), whose term "ownership" we borrow —
+the Autodidact leg can train two extra heads on labels derived from each
+finished self-play game:
+
+- **ownership**: per-point prediction of who ends up owning each
+  intersection ($+1$ side to move, $-1$ opponent, $0$ neutral), from the
+  final board under Tromp–Taylor scoring;
+- **score margin**: final (my score $-$ opponent score)$/81$.
+
+Both are trained as MSE losses in a separate phase after each PPO update
+(`--ownership`, weights `--aux-own-w` / `--aux-margin-w`). The trunk and
+the policy/value heads are byte-identical to the locked spec — the aux
+heads are training-only and never ship to the demo (the fp16 export reads
+the trunk alone), so the "same trunk, richer signal" comparison stays
+honest. One accepted label-noise source: dead stones left on the board
+at double-pass are labeled as owned by their own color (no life/death
+adjudication, unlike KataGo).
+
 ## Shared architecture (locked)
 
 Both legs use the identical trunk and policy head — that is what makes

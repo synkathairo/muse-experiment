@@ -25,6 +25,7 @@ import numpy as np
 import torch
 
 from .net import GoNet, EXPORT_ORDER, ordered_tensors
+from .net_aux import to_gonet_state_dict
 
 
 def export_weights(model, out_path):
@@ -51,7 +52,7 @@ def export_checkpoint(checkpoint, out_path):
     ck = torch.load(checkpoint, map_location="cpu", weights_only=False)
     sd = ck["model"] if isinstance(ck, dict) and "model" in ck else ck
     model = GoNet()
-    model.load_state_dict(sd)
+    model.load_state_dict(to_gonet_state_dict(sd))
     model.eval()
     export_weights(model, out_path)
     return os.path.getsize(out_path)

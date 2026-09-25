@@ -19,6 +19,7 @@ from . import rules, selfplay
 from .gtp import from_gtp_vertex, gtp_color, to_gtp_vertex
 from .mcts import SearchConfig, Searcher
 from .net import GoNet
+from .net_aux import to_gonet_state_dict
 
 
 def pick_device():
@@ -135,7 +136,7 @@ def main():
     ck = torch.load(args.checkpoint, map_location="cpu", weights_only=False)
     sd = ck["model"] if isinstance(ck, dict) and "model" in ck else ck
     model = GoNet()
-    model.load_state_dict(sd)
+    model.load_state_dict(to_gonet_state_dict(sd))
     model.to(device)
     cfg = SearchConfig(simulations=args.sims, batch=args.batch,
                        c_puct=args.c_puct, dirichlet_eps=args.dirichlet_eps,
