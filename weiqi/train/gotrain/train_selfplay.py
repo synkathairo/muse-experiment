@@ -346,16 +346,66 @@ def _load_model_flexible(model, sd):
     return False
 
 
+def _migrate_optimizer_state_dict(ck_opt_sd, ck_model_sd, policy):
+    """Rebuild an optimizer state dict saved over a plain GoNet so it loads
+    into an optimizer over GoNetAux parameters.
+
+    The checkpoint's optimizer was created as Adam(plain_gonet.parameters()):
+    a single param group with IDs 0..K-1 in parameters() order, which matches
+    the state_dict() key order of ck_model_sd (GoNet has no buffers). Each
+    old param maps to its same-named trunk param ("trunk." + name) and keeps
+    its Adam state (step, exp_avg, exp_avg_sq); aux-head params get no state
+    entry, so Adam initializes them fresh on first use. Hyperparameters
+    (lr, betas, eps, ...) carry over untouched.
+    """
+    groups = ck_opt_sd["param_groups"]
+    if len(groups) != 1:
+        raise RuntimeError(
+            "cannot migrate optimizer state: expected 1 param group, "
+            f"found {len(groups)}")
+    old_group = groups[0]
+    old_names = list(ck_model_sd.keys())  # parameters() order == state_dict order
+    new_index = {n: i for i, (n, _) in enumerate(policy.named_parameters())}
+    old_ids = list(old_group["params"])
+    if len(old_ids) != len(old_names):
+        raise RuntimeError(
+            "cannot migrate optimizer state: "
+            f"{len(old_ids)} optimizer params vs {len(old_names)} model params")
+    new_state = {}
+    for pos, old_id in enumerate(old_ids):
+        new_name = "trunk." + old_names[pos]
+        if new_name not in new_index:
+            raise RuntimeError(
+                "cannot migrate optimizer state: "
+                f"no trunk param {new_name!r} in the new model")
+        st = ck_opt_sd["state"].get(old_id)
+        if st is None:
+            st = ck_opt_sd["state"].get(str(old_id))
+        if st is not None:
+            new_state[new_index[new_name]] = st
+    new_group = {k: v for k, v in old_group.items() if k != "params"}
+    new_group["params"] = list(range(len(new_index)))
+    return {"state": new_state, "param_groups": [new_group]}
+
+
 def load_ckpt(path, policy, optimizer, snapshot, device):
     ck = torch.load(path, map_location=device, weights_only=False)
     trunk_mapped = _load_model_flexible(policy, ck["model"])
     _load_model_flexible(snapshot, ck["opponent"])
-    optimizer.load_state_dict(ck["optimizer"])
+    if trunk_mapped:
+        # The checkpoint's optimizer was built over the plain GoNet's params;
+        # migrate its Adam state onto the trunk, fresh state for aux heads.
+        opt_sd = _migrate_optimizer_state_dict(ck["optimizer"], ck["model"],
+                                               policy)
+    else:
+        opt_sd = ck["optimizer"]
+    optimizer.load_state_dict(opt_sd)
     torch.set_rng_state(ck["torch_rng"].cpu())
     np.random.set_state(ck["numpy_rng"])
     if trunk_mapped:
         print("trunk-mapped resume from a plain GoNet checkpoint "
-              "(e.g. the 15.5M run); aux heads randomly initialized",
+              "(e.g. the 15.5M run): trunk weights + Adam state migrated, "
+              "aux heads randomly initialized",
               flush=True)
     return ck
 

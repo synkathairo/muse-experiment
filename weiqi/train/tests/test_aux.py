@@ -201,5 +201,86 @@ class TestLabelPlumbing(unittest.TestCase):
         self.assertTrue(bool(b_valid.any()))
 
 
+class TestTrunkMappedOptimizerResume(unittest.TestCase):
+    """Resuming a real plain-GoNet checkpoint (e.g. the 15.5M run) into the
+    always-GoNetAux trainer: the checkpoint's optimizer was built over the
+    plain net's params, so load_ckpt must migrate its Adam state onto the
+    trunk instead of failing with a param-group size mismatch."""
+
+    def _plain_checkpoint(self, path):
+        from gotrain.train_selfplay import save_ckpt
+        gonet = GoNet()
+        opt = torch.optim.Adam(gonet.parameters(), lr=2.5e-4)
+        # populate Adam state (step / exp_avg / exp_avg_sq), as a real run would
+        for _ in range(3):
+            logits, value = gonet(torch.randn(4, 6, 9, 9))
+            (logits.sum() + value.sum()).backward()
+            opt.step()
+            opt.zero_grad()
+        old_opt_sd = opt.state_dict()
+        save_ckpt(path, gonet, opt, gonet, step=15503360, ppo_iter=100,
+                  snap_ptr=9, hparams={"lr": 2.5e-4, "train_komi": 6.5})
+        return old_opt_sd
+
+    def test_optimizer_state_migrated_onto_trunk(self):
+        import os
+        import tempfile
+        from gotrain.train_selfplay import load_ckpt
+        with tempfile.TemporaryDirectory() as d:
+            path = os.path.join(d, "latest.pt")
+            old_opt_sd = self._plain_checkpoint(path)
+
+            policy = GoNetAux()
+            snapshot = GoNetAux()
+            optimizer = torch.optim.Adam(policy.parameters(), lr=2.5e-4)
+            # this exact call raised ValueError (param group size mismatch)
+            # before the optimizer-state migration existed
+            load_ckpt(path, policy, optimizer, snapshot, torch.device("cpu"))
+
+            # trunk weights mapped
+            for (n_new, p_new), (n_old, p_old) in zip(
+                    sorted(policy.trunk.named_parameters()),
+                    sorted(GoNet().named_parameters())):
+                self.assertEqual(n_new, n_old)
+
+            # Adam state migrated by name: trunk keeps exp_avg/exp_avg_sq/step
+            new_named = dict(policy.named_parameters())
+            new_index = {n: i for i, n in enumerate(new_named)}
+            new_opt_sd = optimizer.state_dict()
+            old_state_by_pos = old_opt_sd["state"]
+            old_names = [n for n, _ in GoNet().named_parameters()]
+            self.assertEqual(len(new_opt_sd["param_groups"]), 1)
+            self.assertAlmostEqual(
+                new_opt_sd["param_groups"][0]["lr"], 2.5e-4)
+            migrated = 0
+            for pos, old_name in enumerate(old_names):
+                old_id = old_opt_sd["param_groups"][0]["params"][pos]
+                new_id = new_index["trunk." + old_name]
+                self.assertIn(new_id, new_opt_sd["state"])
+                for k in ("exp_avg", "exp_avg_sq", "step"):
+                    old_v = old_state_by_pos[old_id][k]
+                    new_v = new_opt_sd["state"][new_id][k]
+                    if torch.is_tensor(old_v):
+                        self.assertTrue(torch.equal(old_v, new_v), k)
+                    else:
+                        self.assertEqual(old_v, new_v)
+                migrated += 1
+            self.assertEqual(migrated, len(old_names))
+
+            # aux-head params get no carried-over state (Adam inits fresh)
+            aux_ids = {new_index[n] for n in new_named if n in AUX_KEYS}
+            self.assertTrue(aux_ids)
+            self.assertFalse(aux_ids & set(new_opt_sd["state"].keys()))
+
+            # snapshot trunk mapped too, and training can proceed: one mixed
+            # PPO+aux step must not raise inside Adam
+            logits, value = policy(torch.randn(4, 6, 9, 9))
+            _, _, own, margin = policy.forward_aux(torch.randn(4, 6, 9, 9))
+            loss = (logits.sum() + value.sum() + own.sum() + margin.sum())
+            optimizer.zero_grad()
+            loss.backward()
+            optimizer.step()  # raises if the migrated state is malformed
+
+
 if __name__ == "__main__":
     unittest.main()
