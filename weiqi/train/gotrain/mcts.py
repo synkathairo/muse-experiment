@@ -159,7 +159,7 @@ class Searcher:
         with torch.no_grad():
             logits, values = self.model(torch.from_numpy(planes).to(self.device))
         logits = logits.float().cpu().numpy()
-        values = np.asarray(values, dtype=np.float64).ravel()
+        values = values.float().cpu().numpy().ravel()
         out = []
         for node, lg, v in zip(leaves, logits, values):
             node.legal = selfplay.legal_mask(node.board, node.to_move)
