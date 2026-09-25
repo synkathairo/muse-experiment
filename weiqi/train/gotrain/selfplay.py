@@ -5,7 +5,8 @@ No PufferLib anywhere: a small numpy/rules.py-based vectorized env with the exac
 
 Rules (PLAN.md §1, provisional but locked for this leg):
   - 9x9, Tromp-Taylor-style legality (via gotrain.rules: no suicide, positional superko),
-  - two-pass termination, Tromp-Taylor area scoring, komi 7.5,
+  - two-pass termination, Tromp-Taylor area scoring, komi configurable
+    (default 7.5; see set_komi — e.g. 6.5 approximates fair komi on 9x9),
   - reward 0 on non-terminal steps, +/-1 at game end from the LEARNER's perspective.
 
 Opponent scheme (why this and not raw self-play):
@@ -47,11 +48,21 @@ KOMI = 7.5
 MAX_PLIES = 3 * N * N  # 243; safety cap guaranteeing termination
 
 
+def set_komi(k):
+    """Set the komi used by score()/winner() for subsequent games.
+
+    Called once at trainer startup (--train-komi). The net itself is
+    komi-blind (no komi input feature); komi only changes game rewards.
+    """
+    global KOMI
+    KOMI = float(k)
+
+
 # ---------------------------------------------------------------------------
 # Tromp-Taylor area scoring
 # ---------------------------------------------------------------------------
 def score(board):
-    """Return (black_score, white_score) with komi 7.5 added to White.
+    """Return (black_score, white_score) with komi added to White.
 
     Tromp-Taylor: score = stones on board + empty points whose bordering stones
     are all one color. Empty regions touching both colors are neutral.
@@ -100,7 +111,7 @@ def score(board):
 
 
 def winner(board):
-    """BLACK, WHITE, or EMPTY (draw — impossible with 7.5 komi, kept for safety)."""
+    """BLACK, WHITE, or EMPTY (draw — impossible with half-integer komi, kept for safety)."""
     b, w = score(board)
     if b > w:
         return BLACK

@@ -50,7 +50,7 @@ import torch.nn.functional as F
 from .export import export_weights
 from .net import GoNet
 from .ppo import PPOConfig, compute_gae, ppo_update, explained_variance
-from .selfplay import SelfPlayGo, PASS
+from .selfplay import SelfPlayGo, PASS, set_komi
 
 # Frozen museum snapshots, log-spaced in env steps (cf. train_cloning.SNAP_STEPS,
 # which is in gradient steps — here the natural unit is env steps / PPO samples).
@@ -365,6 +365,11 @@ def main():
     ap.add_argument("--ckpt-every", type=int, default=10,
                     help="PPO iterations between latest.pt writes")
     ap.add_argument("--max-plies", type=int, default=243)
+    ap.add_argument("--train-komi", type=float, default=7.5,
+                    help="komi for self-play game rewards (default 7.5). "
+                         "6.5 approximates fair komi on 9x9 and gives Black "
+                         "a balanced win rate; eval/benchmark komi is separate. "
+                         "Explicitly passed value wins on --resume.")
     ap.add_argument("--seed", type=int, default=7)
     ap.add_argument("--device", default="auto", choices=["auto", "cpu", "cuda", "mps"],
                     help="compute device; 'auto' picks cuda > mps > cpu")
@@ -397,6 +402,7 @@ def main():
         step = ck["step"]
         ppo_iter = ck["ppo_iter"]
         snap_ptr = ck["snap_ptr"]
+        prev_komi = ck.get("hparams", {}).get("train_komi", 7.5)
         hparams = apply_resumed_hparams(args, ck)
         # rebuild the PPO config from the restored hyperparameters
         cfg = PPOConfig(lr=args.lr, gamma=args.gamma, gae_lambda=args.gae_lambda,
@@ -416,6 +422,12 @@ def main():
 
     log(f"start: {json.dumps(hparams)} resuming_at={step}")
     log(f"device={device} params={policy.param_count()}")
+
+    set_komi(args.train_komi)
+    log(f"train_komi={args.train_komi}")
+    if args.resume and abs(args.train_komi - prev_komi) > 1e-9:
+        log(f"NOTE: train komi changed {prev_komi} -> {args.train_komi} on resume; "
+            f"value head was calibrated to {prev_komi} and will recalibrate")
 
     env = SelfPlayGo(num_envs=args.num_envs, seed=args.seed,
                      max_plies=args.max_plies,
