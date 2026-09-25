@@ -40,6 +40,7 @@ def _clone(board):
     nb.ko = board.ko
     nb.last_move = board.last_move
     nb.history = set(board.history)
+    nb._nb, nb._rc = board._nb, board._rc
     return nb
 
 

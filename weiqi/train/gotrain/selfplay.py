@@ -179,10 +179,14 @@ def legal_mask(board, color):
     """
     mask = np.zeros(N_MOVES, dtype=bool)
     n = board.size
+    g = board.grid
+    is_legal = board.is_legal  # local binding: this is the rollout hot loop
     for r in range(n):
+        grow = g[r]
+        base = r * n
         for c in range(n):
-            if board.grid[r][c] == EMPTY and board.is_legal(r, c, color):
-                mask[r * n + c] = True
+            if grow[c] == EMPTY and is_legal(r, c, color):
+                mask[base + c] = True
     mask[PASS] = True
     return mask
 

@@ -6,13 +6,51 @@ The one-move ko point is kept as a fast path; passes are always legal.
 This is intentionally lenient: for behavioral cloning it only gates which
 (position -> move) pairs we keep, and Japanese-rules (KGS) vs Chinese-rules
 legality differences are negligible here.
+
+Performance note: this module is the hot loop of self-play training
+(~87% of rollout wall-clock in profiling: legal_mask calls is_legal per
+empty point, each doing flood fills). The internals below are optimized
+accordingly — int-encoded points, precomputed neighbor tables, bytearray
+`seen` sets, bytes-based board hashes — while the public API and exact
+legality semantics are unchanged (pinned by tests/test_rules_fuzz.py's
+differential fuzz against the naive reference).
 """
+
+import itertools
 
 EMPTY, BLACK, WHITE = 0, 1, 2
 
 
 def opponent(color):
     return WHITE if color == BLACK else BLACK
+
+
+# -- precomputed per-size tables (module-level cache) --------------------------
+# _NB[size][p] = tuple of int-encoded neighbor points of p = r*size+c.
+# _RC[size][p] = (r, c) for int-encoded p.
+_NB = {}
+_RC = {}
+
+
+def _tables(size):
+    if size not in _NB:
+        nb, rc = [], []
+        for r in range(size):
+            for c in range(size):
+                rc.append((r, c))
+                nbs = []
+                if r > 0:
+                    nbs.append((r - 1) * size + c)
+                if r < size - 1:
+                    nbs.append((r + 1) * size + c)
+                if c > 0:
+                    nbs.append(r * size + c - 1)
+                if c < size - 1:
+                    nbs.append(r * size + c + 1)
+                nb.append(tuple(nbs))
+        _NB[size] = tuple(nb)
+        _RC[size] = tuple(rc)
+    return _NB[size], _RC[size]
 
 
 class Board:
@@ -22,43 +60,68 @@ class Board:
         self.to_play = BLACK
         self.ko = None          # (r, c) or None: simple-ko-banned point
         self.last_move = None   # (r, c) or None (None also means pass / no move yet)
-        self.history = {self._tuple()}  # board tuples seen (positional superko)
+        self._nb, self._rc = _tables(size)
+        self.history = {self._tuple()}  # board hashes seen (positional superko)
 
     def _tuple(self):
-        return tuple(v for row in self.grid for v in row)
+        # bytes, not tuple-of-ints: built at C speed by itertools.chain, and
+        # hashing 81 bytes is far cheaper than hashing 81 Python ints.
+        return bytes(itertools.chain.from_iterable(self.grid))
 
     # -- group / liberty helpers -------------------------------------------------
-    def _neighbors(self, r, c):
-        for dr, dc in ((1, 0), (-1, 0), (0, 1), (0, -1)):
-            nr, nc = r + dr, c + dc
-            if 0 <= nr < self.size and 0 <= nc < self.size:
-                yield nr, nc
+    def _group_int(self, p0):
+        """Flood fill from int-encoded point p0.
 
-    def _group(self, r, c):
-        """Flood fill from (r,c): returns (stones set, liberties set)."""
-        color = self.grid[r][c]
-        stones, liberties, stack = set(), set(), [(r, c)]
-        seen = {(r, c)}
+        Returns (stones, liberties): stones as a list of int points, liberties
+        as a set of int points. Internal fast path; callers convert at the
+        API boundary only where needed.
+        """
+        grid = self.grid
+        rc = self._rc
+        nb = self._nb
+        r0, c0 = rc[p0]
+        color = grid[r0][c0]
+        n = self.size * self.size
+        seen = bytearray(n)
+        seen[p0] = 1
+        stones = [p0]
+        libs = set()
+        stack = [p0]
         while stack:
-            sr, sc = stack.pop()
-            stones.add((sr, sc))
-            for nr, nc in self._neighbors(sr, sc):
-                v = self.grid[nr][nc]
+            p = stack.pop()
+            for q in nb[p]:
+                qr, qc = rc[q]
+                v = grid[qr][qc]
                 if v == EMPTY:
-                    liberties.add((nr, nc))
-                elif v == color and (nr, nc) not in seen:
-                    seen.add((nr, nc))
-                    stack.append((nr, nc))
-        return stones, liberties
+                    libs.add(q)
+                elif v == color and not seen[q]:
+                    seen[q] = 1
+                    stones.append(q)
+                    stack.append(q)
+        return stones, libs
 
     # -- legality / play ----------------------------------------------------------
-    def _would_capture(self, r, c, color):
+    def _would_capture(self, p, color):
+        """Int-encoded points captured by playing p for color.
+
+        Returns a list of int points (deduplicated: each captured group is
+        flood-filled once). Idempotent application makes dedup behavior-safe:
+        the only length-sensitive use is the `len(captured) == 1` ko check,
+        and a 1-stone capture touches exactly one neighbor point, so it can
+        never have appeared twice.
+        """
         opp = opponent(color)
+        grid = self.grid
+        rc = self._rc
         captured = []
-        for nr, nc in self._neighbors(r, c):
-            if self.grid[nr][nc] == opp:
-                stones, libs = self._group(nr, nc)
-                if libs == {(r, c)}:
+        seen_groups = set()
+        for q in self._nb[p]:
+            qr, qc = rc[q]
+            if grid[qr][qc] == opp and q not in seen_groups:
+                stones, libs = self._group_int(q)
+                for s in stones:
+                    seen_groups.add(s)
+                if len(libs) == 1 and p in libs:
                     captured.extend(stones)
         return captured
 
@@ -67,23 +130,35 @@ class Board:
             return False
         if self.ko is not None and (r, c) == self.ko:
             return False
-        captured = self._would_capture(r, c, color)
+        p = r * self.size + c
+        captured = self._would_capture(p, color)
         # Tentatively apply, so suicide and superko are tested on the result.
-        for cr, cc in captured:
-            self.grid[cr][cc] = EMPTY
-        self.grid[r][c] = color
+        grid = self.grid
+        rc = self._rc
+        for s in captured:
+            sr, sc = rc[s]
+            grid[sr][sc] = EMPTY
+        grid[r][c] = color
         if captured:
             legal = True
         else:
-            _, libs = self._group(r, c)
+            _, libs = self._group_int(p)
             legal = bool(libs)
+        if not legal:
+            # revert the tentative move before returning
+            grid[r][c] = EMPTY
+            opp = opponent(color)
+            for s in captured:
+                sr, sc = rc[s]
+                grid[sr][sc] = opp
+            return False
         board_t = self._tuple()
         # Revert the tentative move.
-        self.grid[r][c] = EMPTY
-        for cr, cc in captured:
-            self.grid[cr][cc] = opponent(color)
-        if not legal:
-            return False
+        grid[r][c] = EMPTY
+        opp = opponent(color)
+        for s in captured:
+            sr, sc = rc[s]
+            grid[sr][sc] = opp
         # Positional superko: the resulting board must not repeat any earlier
         # one. (Passes are exempt — they create no new board — and stay legal.)
         return board_t not in self.history
@@ -99,16 +174,20 @@ class Board:
         r, c = move
         if not self.is_legal(r, c, color):
             return False
-        captured = self._would_capture(r, c, color)
-        for cr, cc in captured:
-            self.grid[cr][cc] = EMPTY
-        self.grid[r][c] = color
+        p = r * self.size + c
+        captured = self._would_capture(p, color)
+        grid = self.grid
+        rc = self._rc
+        for s in captured:
+            sr, sc = rc[s]
+            grid[sr][sc] = EMPTY
+        grid[r][c] = color
         self.history.add(self._tuple())
         # simple ko: exactly one stone captured, and the played stone is now a
         # lone single stone with exactly one liberty (the vacated point).
-        stones, libs = self._group(r, c)
+        stones, libs = self._group_int(p)
         if len(captured) == 1 and len(stones) == 1 and len(libs) == 1:
-            self.ko = captured[0]
+            self.ko = rc[captured[0]]
         else:
             self.ko = None
         self.last_move = (r, c)
