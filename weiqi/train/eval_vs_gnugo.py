@@ -1,4 +1,4 @@
-"""Play our net (greedy, via gotrain.gtp) against GNU Go over GTP.
+"""Play our net (via gotrain.gtp) against GNU Go over GTP.
 
 Spawns `gnugo --mode gtp` and our GTP engine as subprocesses, relays moves,
 and arbitrates with gotrain.rules + Tromp-Taylor scoring (7.5 komi). GNU Go
@@ -119,6 +119,8 @@ def main():
                     help="games per level (alternating colors)")
     ap.add_argument("--out", default="/tmp/gnugo_bench.json")
     ap.add_argument("--gnugo", default="gnugo")
+    ap.add_argument("--temperature", type=float, default=0.0,
+                    help="net move temperature: 0 = greedy (default), >0 samples")
     args = ap.parse_args()
 
     py = sys.executable
@@ -127,7 +129,8 @@ def main():
         gnugo = GTPClient([args.gnugo, "--mode", "gtp", "--quiet",
                            "--boardsize", "9", "--chinese-rules",
                            "--komi", "7.5", "--level", str(level)])
-        net = GTPClient([py, "-m", "gotrain.gtp", "--checkpoint", args.checkpoint])
+        net = GTPClient([py, "-m", "gotrain.gtp", "--checkpoint", args.checkpoint,
+                         "--temperature", str(args.temperature)])
         # sanity: both speak GTP
         for eng, nm in ((gnugo, "gnugo"), (net, "net")):
             ok, resp = eng.command("protocol_version", timeout=30)
@@ -142,6 +145,7 @@ def main():
             results.append({"level": level, "game": gi,
                             "net_black": net_is_black, "winner": winner,
                             "reason": reason, "moves": moves,
+                            "temperature": args.temperature,
                             "seconds": round(dt, 1)})
             print(f"level {level} game {gi} "
                   f"({'net' if net_is_black else 'gnugo'} black): "
