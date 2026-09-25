@@ -1,0 +1,74 @@
+[
+  {
+    "level": 1,
+    "game": 0,
+    "net_black": true,
+    "winner": "gnugo",
+    "reason": "score B:24.0 W:60.5",
+    "moves": 105,
+    "seconds": 0.5
+  },
+  {
+    "level": 1,
+    "game": 1,
+    "net_black": false,
+    "winner": "net",
+    "reason": "score B:39.0 W:46.5",
+    "moves": 96,
+    "seconds": 0.6
+  },
+  {
+    "level": 1,
+    "game": 2,
+    "net_black": true,
+    "winner": "gnugo",
+    "reason": "score B:39.0 W:45.5",
+    "moves": 89,
+    "seconds": 0.4
+  },
+  {
+    "level": 1,
+    "game": 3,
+    "net_black": false,
+    "winner": "gnugo",
+    "reason": "score B:45.0 W:39.5",
+    "moves": 82,
+    "seconds": 0.6
+  },
+  {
+    "level": 1,
+    "game": 4,
+    "net_black": true,
+    "winner": "gnugo",
+    "reason": "score B:31.0 W:51.5",
+    "moves": 109,
+    "seconds": 0.6
+  },
+  {
+    "level": 1,
+    "game": 5,
+    "net_black": false,
+    "winner": "net",
+    "reason": "score B:39.0 W:46.5",
+    "moves": 96,
+    "seconds": 0.6
+  },
+  {
+    "level": 1,
+    "game": 6,
+    "net_black": true,
+    "winner": "gnugo",
+    "reason": "score B:39.0 W:45.5",
+    "moves": 89,
+    "seconds": 0.4
+  },
+  {
+    "level": 1,
+    "game": 7,
+    "net_black": false,
+    "winner": "net",
+    "reason": "score B:39.0 W:46.5",
+    "moves": 94,
+    "seconds": 0.6
+  }
+]
