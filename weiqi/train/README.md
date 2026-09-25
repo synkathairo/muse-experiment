@@ -128,6 +128,38 @@ The net never won as Black: opening/first-move play is the hole; komi bails
 it out as White. Check color-conditioned win rates in future training.
 Full record: `eval/gnugo_bench_2026-09-24.json`.
 
+### Benchmarking search strength (the demo's MCTS toggle)
+
+Two GTP engines wrap the same PUCT search as the demo toggle (Rust
+`engine/src/mcts.rs`), so the benchmark measures the toggle itself:
+
+- **Rust** (`weiqi/engine/src/bin/mcts_gtp.rs`): native binary, single-threaded
+  like the demo. Build once: `cargo build --release --bin mcts_gtp`.
+- **Python** (`python -m gotrain.mcts_gtp`): faithful port of the Rust search
+  (3/3 test positions agree move-for-move), with `--batch N` evaluating N
+  leaves per forward pass on GPU (default 16; `--batch 1` is exactly the
+  sequential algorithm). Device auto-selects cuda > mps > cpu.
+
+Plug either into the harness with `--engine-cmd` (shlex-split; `--checkpoint`
+is then not needed):
+
+```bash
+python eval_vs_gnugo.py \
+  --engine-cmd "python -m gotrain.mcts_gtp --checkpoint runs/smoke/latest.pt --sims 100 --batch 16" \
+  --levels 1 3 5 --games 4 --out eval/gnugo_mcts100.json
+# or: --engine-cmd "../engine/target/release/mcts_gtp --blob <weights.bin> --sims 100"
+```
+
+`--sims` mirrors the demo toggle (50/100/200); `--dirichlet-eps` defaults to
+0.15 like the toggle (the Rust binary also accepts `--dirichlet-eps`).
+Run the sim settings in parallel terminals — games are independent. Compare
+each against the greedy baseline above: the question is whether search buys
+Elo vs GNU Go, and whether more sims buys more.
+
+`--temperature` (Python greedy engine only) samples `softmax(logits/T)` over
+legal moves instead of argmax; it does not apply to the search engines, which
+take `--temperature` over root visit counts instead (0 = argmax, default).
+
 ## Supervised leg (Imitator) — parked
 
 `train_cloning.py` trains on (planes → human move) pairs from OGS 9×9 ranked
