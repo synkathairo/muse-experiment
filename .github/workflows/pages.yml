@@ -45,6 +45,9 @@ jobs:
       - name: Build weiqi WASM demo
         run: wasm-pack build --target web --out-dir ../../site/demos/go/pkg
         working-directory: web/src/weiqi-wasm
+        env:
+          # f32x4 for the hand-rolled conv kernel (2x inference speedup)
+          RUSTFLAGS: "-C target-feature=+simd128"
 
       - uses: actions/upload-pages-artifact@v3
         with:

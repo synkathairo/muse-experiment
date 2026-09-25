@@ -11,6 +11,7 @@
 
 pub mod features;
 pub mod infer;
+pub mod mcts;
 pub mod rules;
 
 pub use rules::{Color, Game, IllegalMove, Move, Score, KOMI, N_MOVES, N_POINTS};

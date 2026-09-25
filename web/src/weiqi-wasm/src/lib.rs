@@ -12,7 +12,12 @@
 //! (row 0 = top), 81 = pass.
 
 use wasm_bindgen::prelude::*;
-use weiqi_engine::{features, infer::Net, Color, Game, Move};
+use weiqi_engine::{
+    features,
+    infer::Net,
+    mcts::{self, Eval, Evaluator, SearchConfig},
+    Color, Game, Move,
+};
 
 /// A 9x9 game in progress.
 #[wasm_bindgen]
@@ -140,4 +145,45 @@ impl WasmNet {
         let feat = features::encode(&game.inner);
         self.inner.forward(&feat).value
     }
+
+    /// PUCT search move for `game`'s current position: `simulations` tree
+    /// iterations guided by this net's policy (priors) and value (leaves).
+    /// Returns a move index (0–80 point, 81 pass), with a touch of root
+    /// Dirichlet noise so repeated calls vary slightly.
+    pub fn search(&self, game: &WasmGame, simulations: u32) -> usize {
+        search_best_move(game, self, simulations, 0.05)
+    }
+}
+
+impl Evaluator for WasmNet {
+    /// Single forward pass: policy priors + leaf value together.
+    fn evaluate(&self, game: &Game) -> Eval {
+        let feat = features::encode(game);
+        let out = self.inner.forward(&feat);
+        Eval {
+            policy: out.policy,
+            value: out.value,
+        }
+    }
+}
+
+/// PUCT search over `game` using `net`, returning the move index (0–80
+/// point, 81 pass). `dirichlet_eps` adds root exploration noise (0 disables).
+/// Deterministic for a fixed position, net, and simulation count.
+#[wasm_bindgen]
+pub fn search_best_move(
+    game: &WasmGame,
+    net: &WasmNet,
+    simulations: u32,
+    dirichlet_eps: f32,
+) -> usize {
+    if game.inner.is_over() {
+        return 81;
+    }
+    let cfg = SearchConfig {
+        simulations: simulations.max(1),
+        dirichlet_eps,
+        ..SearchConfig::default()
+    };
+    mcts::search(&game.inner, net, &cfg)
 }

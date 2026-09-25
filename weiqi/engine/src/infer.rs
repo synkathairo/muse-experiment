@@ -113,15 +113,15 @@ impl Net {
     /// Forward pass. Input: 486 features from [`crate::features::encode`].
     /// Deterministic: same input → bit-identical output.
     pub fn forward(&self, input: &[f32; FEATURE_LEN]) -> Output {
-        // Trunk: 4 × conv3×3 pad1 + ReLU.
-        let mut t = conv2d(input, 6, &self.c1_w, &self.c1_b, TRUNK_C, 3, 1);
+        // Trunk: 4 × conv3×3 pad1 + ReLU (specialized branch-free kernel).
+        let mut t = conv3x3_pad1(input, 6, &self.c1_w, &self.c1_b, TRUNK_C);
         relu(&mut t);
         for (w, b) in [
             (&self.c2_w, &self.c2_b),
             (&self.c3_w, &self.c3_b),
             (&self.c4_w, &self.c4_b),
         ] {
-            t = conv2d(&t, TRUNK_C, w, b, TRUNK_C, 3, 1);
+            t = conv3x3_pad1(&t, TRUNK_C, w, b, TRUNK_C);
             relu(&mut t);
         }
 
@@ -182,6 +182,75 @@ fn conv2d(
                     }
                 }
                 out[(oc * h + r) * w + c] = acc;
+            }
+        }
+    }
+    out
+}
+
+/// 3×3 pad-1 convolution specialized for the trunk. The interior 7×7 cells
+/// are computed branch-free with the 9 taps unrolled, so the inner channel
+/// loop is a clean reduction that LLVM auto-vectorizes (notably to f32x4
+/// with `+simd128` on wasm32); border cells use the scalar checked fallback.
+/// Same math as `conv2d(input, in_c, weight, bias, out_c, 3, 1)` up to fp
+/// reassociation noise (differentially tested).
+fn conv3x3_pad1(
+    input: &[f32],
+    in_c: usize,
+    weight: &[f32],
+    bias: &[f32],
+    out_c: usize,
+) -> Vec<f32> {
+    let mut out = vec![0.0f32; out_c * 81];
+    for oc in 0..out_c {
+        let w_oc = &weight[oc * in_c * 9..(oc + 1) * in_c * 9];
+        let out_oc = &mut out[oc * 81..(oc + 1) * 81];
+        let b = bias[oc];
+        // Interior: no bounds checks possible (r,c in 1..8, taps ±1 stay in
+        // 0..9). Offsets are relative to the center tap x0.
+        for r in 1..8usize {
+            for c in 1..8usize {
+                let mut acc = b;
+                for ic in 0..in_c {
+                    let w = &w_oc[ic * 9..ic * 9 + 9];
+                    let x0 = ic * 81 + r * 9 + c;
+                    acc += w[0] * input[x0 - 10];
+                    acc += w[1] * input[x0 - 9];
+                    acc += w[2] * input[x0 - 8];
+                    acc += w[3] * input[x0 - 1];
+                    acc += w[4] * input[x0];
+                    acc += w[5] * input[x0 + 1];
+                    acc += w[6] * input[x0 + 8];
+                    acc += w[7] * input[x0 + 9];
+                    acc += w[8] * input[x0 + 10];
+                }
+                out_oc[r * 9 + c] = acc;
+            }
+        }
+        // Border ring: scalar with bounds checks.
+        for r in 0..9usize {
+            for c in 0..9usize {
+                if (1..8).contains(&r) && (1..8).contains(&c) {
+                    continue;
+                }
+                let mut acc = b;
+                for ic in 0..in_c {
+                    for kr in 0..3usize {
+                        let ir = r as isize + kr as isize - 1;
+                        if !(0..9).contains(&ir) {
+                            continue;
+                        }
+                        for kc in 0..3usize {
+                            let icc = c as isize + kc as isize - 1;
+                            if !(0..9).contains(&icc) {
+                                continue;
+                            }
+                            acc += w_oc[(ic * 3 + kr) * 3 + kc]
+                                * input[(ic * 9 + ir as usize) * 9 + icc as usize];
+                        }
+                    }
+                }
+                out_oc[r * 9 + c] = acc;
             }
         }
     }
@@ -355,6 +424,37 @@ mod tests {
         let b = net.forward(&feat);
         assert_eq!(a.policy, b.policy);
         assert_eq!(a.value, b.value);
+    }
+
+    #[test]
+    fn conv3x3_pad1_matches_generic_conv2d() {
+        // Deterministic pseudo-random weights/input; the two kernels must
+        // agree up to fp reassociation noise.
+        let mut s: u64 = 0x12345678;
+        let mut rnd = || {
+            s ^= s << 13;
+            s ^= s >> 7;
+            s ^= s << 17;
+            s = s.wrapping_mul(0x2545F4914F6CDD1D);
+            ((s >> 11) as f64 / (1u64 << 53) as f64 * 2.0 - 1.0) as f32
+        };
+        for &(in_c, out_c) in &[(6usize, 64usize), (64, 64), (64, 3)] {
+            let input: Vec<f32> = (0..in_c * 81).map(|_| rnd()).collect();
+            let weight: Vec<f32> = (0..out_c * in_c * 9).map(|_| rnd()).collect();
+            let bias: Vec<f32> = (0..out_c).map(|_| rnd()).collect();
+            let a = conv2d(&input, in_c, &weight, &bias, out_c, 3, 1);
+            let b = conv3x3_pad1(&input, in_c, &weight, &bias, out_c);
+            assert_eq!(a.len(), b.len());
+            let max_diff = a
+                .iter()
+                .zip(b.iter())
+                .map(|(x, y)| (x - y).abs())
+                .fold(0.0f32, f32::max);
+            assert!(
+                max_diff < 1e-4,
+                "in_c={in_c} out_c={out_c}: max_diff={max_diff}"
+            );
+        }
     }
 
     #[test]

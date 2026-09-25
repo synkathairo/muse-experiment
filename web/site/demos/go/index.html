@@ -90,6 +90,19 @@
 		<p class="hint">0 = greedy (strongest move every time), higher = more playful.</p>
 
 		<div class="row">
+			<label for="search">Bot search</label>
+			<select id="search">
+				<option value="0" selected>off</option>
+				<option value="50">50 sims</option>
+				<option value="100">100 sims</option>
+				<option value="200">200 sims</option>
+			</select>
+		</div>
+		<p class="hint">Monte-Carlo tree search: the bot thinks ahead using its own
+		policy and value. Fewer blunders, slower moves — the page pauses briefly
+		while it thinks.</p>
+
+		<div class="row">
 			<label for="komi">Komi</label>
 			<select id="komi">
 				<option value="5.5">5.5</option>
@@ -136,7 +149,9 @@
 	above are the measured reality, not a strength claim.</p>
 	<p>How the training works is written up in
 	<a href="https://github.com/synkathairo/muse-experiment/blob/main/weiqi/theory.md">weiqi/theory.md</a>
-	— search-free PPO self-play, a different beast from AlphaZero's MCTS.</p>
+	— search-free PPO self-play, a different beast from AlphaZero's MCTS. The
+	optional bot search above is MCTS at <em>play</em> time only: the same net,
+	thinking ahead. Training never used search.</p>
 </div>
 
 <p><a href="../../index.html">← back to demos</a></p>
@@ -153,7 +168,7 @@
 	let netCache = new Map(), net = null, netLoading = null;
 	let game = null, mode = 'human-bot', humanColor = 0;
 	let temperature = 0.3, showHeat = true, botTimer = null, paused = false;
-	let komi = 6.5;
+	let komi = 6.5, searchSims = 0;
 	let hover = -1, heatPolicy = null;
 
 	const statusEl = $('status'), resultEl = $('result');
@@ -274,9 +289,13 @@
 		botTimer = null;
 		if (paused) return;
 		if (!game || game.is_over() || !net) return;
-		const policy = net.policy(game);
-		const mask = game.legal_mask();
-		game.play(sampleMove(policy, mask));
+		if (searchSims > 0) {
+			game.play(net.search(game, searchSims));
+		} else {
+			const policy = net.policy(game);
+			const mask = game.legal_mask();
+			game.play(sampleMove(policy, mask));
+		}
 		heatPolicy = null;
 		render();
 		updateStatus();
@@ -449,6 +468,7 @@
 		temperature = +e.target.value;
 		$('tempVal').textContent = temperature === 0 ? 'greedy' : temperature.toFixed(1);
 	});
+	$('search').addEventListener('change', e => { searchSims = +e.target.value; });
 	$('heat').addEventListener('change', e => { showHeat = e.target.checked; render(); });
 	$('komi').addEventListener('change', e => {
 		komi = +e.target.value;
