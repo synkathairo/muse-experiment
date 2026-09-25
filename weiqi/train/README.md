@@ -152,9 +152,10 @@ python eval_vs_gnugo.py \
 
 `--sims` mirrors the demo toggle (50/100/200); `--dirichlet-eps` defaults to
 0.15 like the toggle (the Rust binary also accepts `--dirichlet-eps`).
-Run the sim settings in parallel terminals — games are independent. Compare
-each against the greedy baseline above: the question is whether search buys
-Elo vs GNU Go, and whether more sims buys more.
+Games are independent: pass `--jobs N` to run N games in parallel (each gets
+its own GNU Go + engine subprocesses). Compare each against the greedy
+baseline above: the question is whether search buys Elo vs GNU Go, and
+whether more sims buys more.
 
 `--temperature` (Python greedy engine only) samples `softmax(logits/T)` over
 legal moves instead of argmax; it does not apply to the search engines, which

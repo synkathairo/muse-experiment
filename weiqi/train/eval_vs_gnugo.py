@@ -112,6 +112,39 @@ def play_game(gnugo, net, net_is_black, move_timeout):
     return winner, reason, moves
 
 
+def play_one(task):
+    """Play one game with fresh GTP subprocesses. `task` is a plain tuple
+    so it pickles across process boundaries for --jobs > 1."""
+    level, gi, gnugo_argv, net_argv, move_timeout, temperature = task
+    gnugo = GTPClient(gnugo_argv)
+    net = GTPClient(net_argv)
+    try:
+        # sanity: both speak GTP
+        for eng, nm in ((gnugo, "gnugo"), (net, "net")):
+            ok, resp = eng.command("protocol_version", timeout=30)
+            assert ok and resp.strip() == "2", f"{nm} GTP broken: {resp}"
+        net_is_black = (gi % 2 == 0)
+        t0 = time.time()
+        winner, reason, moves = play_game(
+            gnugo, net, net_is_black, move_timeout=move_timeout)
+        dt = time.time() - t0
+        return {"level": level, "game": gi,
+                "net_black": net_is_black, "winner": winner,
+                "reason": reason, "moves": moves,
+                "temperature": temperature,
+                "seconds": round(dt, 1)}
+    finally:
+        gnugo.close()
+        net.close()
+
+
+def _report(r, prefix=""):
+    print(f"{prefix}level {r['level']} game {r['game']} "
+          f"({'net' if r['net_black'] else 'gnugo'} black): "
+          f"{r['winner']} wins [{r['reason']}] "
+          f"({r['moves']} moves, {r['seconds']}s)", flush=True)
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--checkpoint", default=None,
@@ -128,45 +161,52 @@ def main():
                     help="override the net GTP engine command (shlex-split). "
                          "E.g. \"./target/release/mcts_gtp --blob <w.bin> --sims 100\". "
                          "When set, --checkpoint is not needed.")
+    ap.add_argument("--jobs", type=int, default=1,
+                    help="games to run in parallel (default 1 = sequential). "
+                         "Each game gets its own GNU Go + engine subprocesses.")
     args = ap.parse_args()
 
     py = sys.executable
-    results = []
-    for level in args.levels:
-        gnugo = GTPClient([args.gnugo, "--mode", "gtp", "--quiet",
-                           "--boardsize", "9", "--chinese-rules",
-                           "--komi", "7.5", "--level", str(level)])
-        if args.engine_cmd:
-            net_argv = shlex.split(args.engine_cmd)
-        else:
-            if not args.checkpoint:
-                ap.error("--checkpoint is required unless --engine-cmd is given")
-            net_argv = [py, "-m", "gotrain.gtp", "--checkpoint", args.checkpoint,
-                        "--temperature", str(args.temperature)]
-        net = GTPClient(net_argv)
-        # sanity: both speak GTP
-        for eng, nm in ((gnugo, "gnugo"), (net, "net")):
-            ok, resp = eng.command("protocol_version", timeout=30)
-            assert ok and resp.strip() == "2", f"{nm} GTP broken: {resp}"
-        for gi in range(args.games):
-            net_is_black = (gi % 2 == 0)
-            t0 = time.time()
-            winner, reason, moves = play_game(
-                gnugo, net, net_is_black,
-                move_timeout=300 if level >= 10 else 120)
-            dt = time.time() - t0
-            results.append({"level": level, "game": gi,
-                            "net_black": net_is_black, "winner": winner,
-                            "reason": reason, "moves": moves,
-                            "temperature": args.temperature,
-                            "seconds": round(dt, 1)})
-            print(f"level {level} game {gi} "
-                  f"({'net' if net_is_black else 'gnugo'} black): "
-                  f"{winner} wins [{reason}] ({moves} moves, {dt:.0f}s)",
-                  flush=True)
-        gnugo.close()
-        net.close()
+    if args.engine_cmd:
+        net_argv = shlex.split(args.engine_cmd)
+    else:
+        if not args.checkpoint:
+            ap.error("--checkpoint is required unless --engine-cmd is given")
+        net_argv = [py, "-m", "gotrain.gtp", "--checkpoint", args.checkpoint,
+                    "--temperature", str(args.temperature)]
 
+    tasks = []
+    for level in args.levels:
+        gnugo_argv = [args.gnugo, "--mode", "gtp", "--quiet",
+                      "--boardsize", "9", "--chinese-rules",
+                      "--komi", "7.5", "--level", str(level)]
+        move_timeout = 300 if level >= 10 else 120
+        for gi in range(args.games):
+            tasks.append((level, gi, gnugo_argv, net_argv,
+                          move_timeout, args.temperature))
+
+    results = []
+    if args.jobs <= 1:
+        for t in tasks:
+            r = play_one(t)
+            results.append(r)
+            _report(r)
+    else:
+        from concurrent.futures import ProcessPoolExecutor, as_completed
+        with ProcessPoolExecutor(max_workers=args.jobs) as ex:
+            futs = [ex.submit(play_one, t) for t in tasks]
+            try:
+                done = 0
+                for fut in as_completed(futs):
+                    r = fut.result()
+                    results.append(r)
+                    done += 1
+                    _report(r, prefix=f"[{done}/{len(tasks)}] ")
+            except KeyboardInterrupt:
+                ex.shutdown(cancel_futures=True)
+                raise
+
+    results.sort(key=lambda r: (r["level"], r["game"]))
     with open(args.out, "w") as f:
         json.dump(results, f, indent=2)
     print(f"\nwrote {args.out}")
