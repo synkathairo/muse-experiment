@@ -92,6 +92,13 @@ impl WasmGame {
     pub fn score_white(&self) -> f32 {
         self.inner.score().white
     }
+
+    /// Per-point ownership (81 bytes): 0 = neutral, 1 = black, 2 = white.
+    /// Counts agree with the area scores (minus komi). For end-of-game
+    /// territory shading.
+    pub fn territory(&self) -> Vec<u8> {
+        self.inner.territory().to_vec()
+    }
 }
 
 /// The LOCKED GoNet with f32 weights, loaded from a fetched blob.

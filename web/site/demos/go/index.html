@@ -358,6 +358,22 @@
 			if (s === 2) { ctx.strokeStyle = '#999'; ctx.lineWidth = 1; ctx.stroke(); }
 		}
 
+		// territory shading (game over only): translucent wash on empty points,
+		// cool for Black's territory, warm for White's. Counts agree with the
+		// area scores shown in the result line.
+		if (game.is_over()) {
+			const terr = game.territory();
+			for (let i = 0; i < 81; i++) {
+				const t = terr[i];
+				if (t === 0 || game.stone_at(i) !== 0) continue;
+				ctx.fillStyle = t === 1 ? 'rgba(80, 130, 190, 0.35)'
+				                        : 'rgba(200, 110, 80, 0.35)';
+				ctx.beginPath();
+				ctx.arc(g.x(i % 9), g.y((i / 9) | 0), g.cell * 0.46, 0, 7);
+				ctx.fill();
+			}
+		}
+
 		// last-move marker
 		const lm = game.last_move();
 		if (lm < 81) {

@@ -387,6 +387,56 @@ impl Game {
         Score { black, white }
     }
 
+    /// Per-point ownership of the current position: 0 = neutral (dame, open
+    /// area, or empty), 1 = black (stone or surrounded territory),
+    /// 2 = white (stone or surrounded territory). Same Tromp–Taylor flood
+    /// fill as [`Game::score`], so the counts agree with the area scores.
+    /// Meant for end-of-game territory shading in the UI.
+    pub fn territory(&self) -> [u8; N_POINTS] {
+        let mut own = [0u8; N_POINTS];
+        for (i, s) in self.board.iter().enumerate() {
+            own[i] = match s {
+                None => 0,
+                Some(Color::Black) => 1,
+                Some(Color::White) => 2,
+            };
+        }
+        let mut visited = [false; N_POINTS];
+        for i in 0..N_POINTS {
+            if self.board[i].is_none() && !visited[i] {
+                let mut stack = vec![i as u8];
+                visited[i] = true;
+                let mut region = vec![];
+                let mut touches_black = false;
+                let mut touches_white = false;
+                while let Some(q) = stack.pop() {
+                    region.push(q);
+                    for nb in neighbors(q).into_iter().flatten() {
+                        match self.board[nb as usize] {
+                            None => {
+                                if !visited[nb as usize] {
+                                    visited[nb as usize] = true;
+                                    stack.push(nb);
+                                }
+                            }
+                            Some(Color::Black) => touches_black = true,
+                            Some(Color::White) => touches_white = true,
+                        }
+                    }
+                }
+                let v = match (touches_black, touches_white) {
+                    (true, false) => 1,
+                    (false, true) => 2,
+                    _ => 0,
+                };
+                for q in region {
+                    own[q as usize] = v;
+                }
+            }
+        }
+        own
+    }
+
     /// Stones and liberties of the group containing point `start`
     /// (which must hold a stone).
     fn group_liberties(&self, start: u8) -> (Vec<u8>, Vec<u8>) {
@@ -612,6 +662,31 @@ mod tests {
         assert_eq!(s.black, 3.0); // 2 stones + 1 point
         assert_eq!(s.white, 2.0 + 1.0 + KOMI); // 2 stones + 1 point + komi
         assert_eq!(s.winner(), Color::White);
+    }
+
+    #[test]
+    fn territory_matches_score() {
+        // Black owns (0,0), white owns (8,8); everything else is dame.
+        let mut g = Game::new();
+        g.set(Color::Black, 0, 1);
+        g.set(Color::Black, 1, 0);
+        g.set(Color::White, 8, 7);
+        g.set(Color::White, 7, 8);
+        let t = g.territory();
+        assert_eq!(t[idx(0, 0) as usize], 1);
+        assert_eq!(t[idx(0, 1) as usize], 1); // black stones read back as 1
+        assert_eq!(t[idx(1, 0) as usize], 1);
+        assert_eq!(t[idx(8, 8) as usize], 2);
+        assert_eq!(t[idx(8, 7) as usize], 2);
+        assert_eq!(t[idx(7, 8) as usize], 2);
+        assert_eq!(t[idx(4, 4) as usize], 0); // dame
+        // Counts agree with the area score (minus komi, which is not spatial).
+        let s = g.score();
+        assert_eq!(t.iter().filter(|&&v| v == 1).count() as f32, s.black);
+        assert_eq!(
+            t.iter().filter(|&&v| v == 2).count() as f32,
+            s.white - KOMI
+        );
     }
 
     #[test]
