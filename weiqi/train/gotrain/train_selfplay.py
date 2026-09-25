@@ -3,6 +3,9 @@
 Trains gotrain.net.GoNet from scratch: the learner plays both colors (alternating
 per episode) against a frozen snapshot of its own policy, refreshed every K PPO
 iterations. Pure +/-1 terminal reward; the value head learns win probability.
+Opening exploration: Dirichlet noise is mixed into both sides' sampling for the
+first --dirichlet-plies plies of each game (AlphaZero-style), which keeps the
+opening from collapsing to a single memorized line.
 
 Checkpoint discipline mirrors train_cloning.py:
   - rolling `latest.pt` (model + optimizer + opponent snapshot + step + RNG),
@@ -65,10 +68,38 @@ def masked_dist(logits, masks):
 
 
 @torch.no_grad()
-def sample_actions(policy, obs_t, masks_t):
+def dirichlet_noised_dist(dist, masks, noise_mask, alpha, eps):
+    """AlphaZero-style opening exploration: P' = (1-eps)*P + eps*Dir(alpha).
+
+    The noise is supported on legal moves only and is mixed in per-row for
+    rows where noise_mask is True; other rows keep the policy's distribution.
+    Works even on a fully collapsed (delta) policy, where temperature
+    scaling would be a no-op, because the noise injects mass independently
+    of the policy's output.
+    """
+    probs = dist.probs
+    d = torch.distributions.Dirichlet(
+        torch.full((probs.shape[-1],), alpha, device=probs.device)).sample((probs.shape[0],))
+    d = d.masked_fill(~masks, 0.0)
+    d = d / d.sum(-1, keepdim=True).clamp_min(1e-12)
+    mixed = (1.0 - eps) * probs + eps * d
+    mixed = mixed.masked_fill(~masks, 0.0)
+    mixed = mixed / mixed.sum(-1, keepdim=True).clamp_min(1e-12)
+    out = torch.where(noise_mask.unsqueeze(-1), mixed, probs)
+    return torch.distributions.Categorical(probs=out)
+
+
+@torch.no_grad()
+def sample_actions(policy, obs_t, masks_t, noise_mask=None,
+                   dirichlet_alpha=0.05, dirichlet_eps=0.25):
     logits, values = policy(obs_t)
     dist = masked_dist(logits, masks_t)
+    if noise_mask is not None and bool(noise_mask.any()):
+        dist = dirichlet_noised_dist(dist, masks_t, noise_mask,
+                                     dirichlet_alpha, dirichlet_eps)
     actions = dist.sample()
+    # logps are under the *behavior* distribution (noise included), which is
+    # what PPO's importance ratio requires.
     return actions, dist.log_prob(actions), values.view(-1)
 
 
@@ -80,7 +111,7 @@ def greedy_actions(policy, obs_t, masks_t):
     return masked.argmax(dim=-1)
 
 
-def random_opponent(obs, masks):
+def random_opponent(obs, masks, game_plies=None):
     """Uniform over legal moves. obs unused; signature matches opponent_fn."""
     B = masks.shape[0]
     actions = np.empty(B, dtype=np.int64)
@@ -140,18 +171,32 @@ def greedy_capture_opponent(obs, masks):
     return actions
 
 
-def make_snapshot_opponent(snapshot_net, device, greedy=False):
-    """opponent_fn playing the frozen snapshot (sampled, or greedy for eval)."""
+def make_snapshot_opponent(snapshot_net, device, greedy=False,
+                           dirichlet_plies=0, dirichlet_alpha=0.05,
+                           dirichlet_eps=0.25):
+    """opponent_fn playing the frozen snapshot (sampled, or greedy for eval).
+
+    When not greedy, Dirichlet noise is mixed into the first `dirichlet_plies`
+    plies of each game (AlphaZero-style opening exploration); the env passes
+    per-game ply counts as `game_plies`. Greedy eval never gets noise.
+    """
     snapshot_net.eval()
 
     @torch.no_grad()
-    def fn(obs, masks):
+    def fn(obs, masks, game_plies=None):
         obs_t = torch.from_numpy(obs).to(device)
         masks_t = torch.from_numpy(masks).to(device)
         if greedy:
             a = greedy_actions(snapshot_net, obs_t, masks_t)
         else:
-            a, _, _ = sample_actions(snapshot_net, obs_t, masks_t)
+            noise_mask = None
+            if game_plies is not None and dirichlet_plies > 0:
+                noise_mask = torch.from_numpy(
+                    np.asarray(game_plies) < dirichlet_plies).to(device)
+            a, _, _ = sample_actions(snapshot_net, obs_t, masks_t,
+                                     noise_mask=noise_mask,
+                                     dirichlet_alpha=dirichlet_alpha,
+                                     dirichlet_eps=dirichlet_eps)
         return a.cpu().numpy().astype(np.int64)
 
     return fn
@@ -303,8 +348,15 @@ def main():
     ap.add_argument("--gae-lambda", type=float, default=0.95)
     ap.add_argument("--clip-coef", type=float, default=0.2)
     ap.add_argument("--vf-coef", type=float, default=0.5)
-    ap.add_argument("--ent-coef", type=float, default=0.01)
+    ap.add_argument("--ent-coef", type=float, default=0.03)
     ap.add_argument("--max-grad-norm", type=float, default=0.5)
+    ap.add_argument("--dirichlet-plies", type=int, default=12,
+                    help="opening plies per game with Dirichlet noise mixed into "
+                         "both sides' sampling (0 disables)")
+    ap.add_argument("--dirichlet-alpha", type=float, default=0.05,
+                    help="Dirichlet concentration for opening noise")
+    ap.add_argument("--dirichlet-eps", type=float, default=0.25,
+                    help="noise mixture weight for opening noise")
     ap.add_argument("--opp-refresh-every", type=int, default=10,
                     help="PPO iterations between opponent snapshot refreshes")
     ap.add_argument("--eval-every", type=int, default=20,
@@ -367,7 +419,11 @@ def main():
 
     env = SelfPlayGo(num_envs=args.num_envs, seed=args.seed,
                      max_plies=args.max_plies,
-                     opponent_fn=make_snapshot_opponent(snapshot, device))
+                     opponent_fn=make_snapshot_opponent(
+                         snapshot, device,
+                         dirichlet_plies=args.dirichlet_plies,
+                         dirichlet_alpha=args.dirichlet_alpha,
+                         dirichlet_eps=args.dirichlet_eps))
     obs = env.reset()  # (N,6,9,9) float32, learner to move
 
     T, N = args.rollout_steps, args.num_envs
@@ -396,7 +452,17 @@ def main():
             masks = env.legal_masks_learner()
             obs_t = torch.from_numpy(obs).to(device)
             masks_t = torch.from_numpy(masks).to(device)
-            actions, logps, values = sample_actions(policy, obs_t, masks_t)
+            # Dirichlet opening noise for both colors' early plies: env.plies
+            # is the upcoming move's ply index in each env (exact across
+            # resets and color alternation, since the env owns the counters).
+            noise_mask = None
+            if args.dirichlet_plies > 0:
+                noise_mask = torch.from_numpy(
+                    env.plies < args.dirichlet_plies).to(device)
+            actions, logps, values = sample_actions(
+                policy, obs_t, masks_t, noise_mask=noise_mask,
+                dirichlet_alpha=args.dirichlet_alpha,
+                dirichlet_eps=args.dirichlet_eps)
 
             b_obs[t] = obs_t.cpu()
             b_masks[t] = masks_t.cpu()

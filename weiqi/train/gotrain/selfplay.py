@@ -234,7 +234,8 @@ class SelfPlayGo:
             color = opponent(self.learner_color[i])
             obs[k] = observe(self.boards[i], color)
             masks[k] = legal_mask(self.boards[i], color)
-        opp_actions = np.asarray(self.opponent_fn(obs, masks), dtype=np.int64)
+        opp_actions = np.asarray(
+            self.opponent_fn(obs, masks, self.plies[idxs]), dtype=np.int64)
         assert opp_actions.shape == (len(idxs),)
         for k, i in enumerate(idxs):
             i = int(i)

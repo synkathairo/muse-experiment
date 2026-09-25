@@ -76,7 +76,7 @@ def reference_score(grid):
             white_stones + white_terr + selfplay.KOMI)
 
 
-def random_masked_player(obs, masks):
+def random_masked_player(obs, masks, game_plies=None):
     return random_opponent(obs, masks)
 
 
@@ -112,7 +112,7 @@ class TestScoring(unittest.TestCase):
     def test_two_pass_game_empty_board(self):
         # learner Black passes, opponent (always-pass) passes -> White wins
         env = SelfPlayGo(num_envs=1, seed=0,
-                         opponent_fn=lambda o, m: np.array([81]))
+                         opponent_fn=lambda o, m, g=None: np.array([81]))
         env.reset()
         obs, rewards, dones, terms, lens = env.step(np.array([81]))
         self.assertTrue(dones[0])
@@ -295,6 +295,43 @@ class TestPPO(unittest.TestCase):
             actions, _, _ = sample_actions(model, obs, masks)
             self.assertFalse((actions == 0).any())
 
+
+    def test_dirichlet_noise_unstick_collapsed_policy(self):
+        # the 3M-run pathology: a delta policy (p=1 on one move) must still
+        # explore when opening noise is on -- temperature scaling can't do this
+        from gotrain.train_selfplay import sample_actions, dirichlet_noised_dist
+        from gotrain.train_selfplay import masked_dist
+        torch.manual_seed(0)
+        model = GoNet()
+        with torch.no_grad():
+            model.pol_fc.bias[:] = -100.0
+            model.pol_fc.bias[7] = 100.0  # collapsed: always move 7
+        masks = torch.ones(8, 82, dtype=torch.bool)
+        obs = torch.zeros(8, 6, 9, 9)
+        noise_mask = torch.ones(8, dtype=torch.bool)
+        seen = set()
+        for _ in range(30):
+            actions, _, _ = sample_actions(
+                model, obs, masks, noise_mask=noise_mask,
+                dirichlet_alpha=0.05, dirichlet_eps=0.25)
+            seen.update(actions.tolist())
+            self.assertTrue((masks[torch.arange(8), actions]).all())
+        # noise must have pried at least one alternative move loose
+        self.assertGreater(len(seen), 1)
+        # ...but rows without noise stay deterministic
+        for _ in range(10):
+            actions, _, _ = sample_actions(
+                model, obs, masks,
+                noise_mask=torch.zeros(8, dtype=torch.bool))
+            self.assertTrue((actions == 7).all())
+        # mixture weights are exact: (1-eps)*P + eps*noise, legal-only
+        logits, _ = model(obs)
+        dist = masked_dist(logits, masks)
+        noised = dirichlet_noised_dist(
+            dist, masks, noise_mask, alpha=0.05, eps=0.25)
+        self.assertTrue(torch.allclose(
+            noised.probs.sum(-1), torch.ones(8), atol=1e-5))
+        self.assertFalse(bool((noised.probs[~masks] > 0).any()))
 
     def test_gae_does_not_bootstrap_across_terminal(self):
         # regression: compute_gae masked with terms[t+1] instead of terms[t],
