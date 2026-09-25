@@ -115,9 +115,8 @@
 	dead groups before the final passes. Two deliberate deviations from pure
 	Tromp–Taylor: suicide is banned outright (pure TT lets it self-clear) and
 	komi is fixed at 7.5 (pure TT leaves it to player agreement).</p>
-	<p><strong>Honest caveats.</strong> These checkpoints are from a clean 3M-step
-	self-play run on Apple Silicon (M1/MPS) with corrected training semantics —
-	the buggy CPU pilot's weights are gone. At 3M the net scores 10–22 against
+	<p><strong>Honest caveats.</strong> These checkpoints are from a 3M-step
+	self-play run on Apple Silicon (M1/MPS). At 3M the net scores 10–22 against
 	GNU Go levels 1–10, but the strength is lopsided: 8–8 as White, 2–14 as
 	Black. Opening play going first is the known weakness; more steps alone
 	don't fix it. They exist so you can watch learning happen, and the numbers
