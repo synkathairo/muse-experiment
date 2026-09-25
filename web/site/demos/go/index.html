@@ -39,7 +39,7 @@
 	This page runs a real 9×9 Go engine <em>in your browser</em> via WebAssembly,
 	compiled from the <a href="https://github.com/synkathairo/muse-experiment/tree/main/weiqi/engine">weiqi-engine</a>
 	Rust code — modified Tromp–Taylor rules (captures, suicide ban, positional
-	superko, two-pass end, area scoring with 7.5 komi) plus a hand-rolled
+	superko, two-pass end, area scoring with selectable komi, default 6.5) plus a hand-rolled
 	130k-parameter CNN forward pass.
 	Toggle the <strong>policy heatmap</strong> to see what the net is thinking.
 </p>
@@ -90,6 +90,17 @@
 		<p class="hint">0 = greedy (strongest move every time), higher = more playful.</p>
 
 		<div class="row">
+			<label for="komi">Komi</label>
+			<select id="komi">
+				<option value="5.5">5.5</option>
+				<option value="6.5" selected>6.5</option>
+				<option value="7.5">7.5</option>
+			</select>
+		</div>
+		<p class="hint">The bot plays the same moves whatever the komi — only the
+		scoring changes. Applies to new games.</p>
+
+		<div class="row">
 			<label style="margin:0; font-weight:normal;">
 				<input type="checkbox" id="heat" checked /> policy heatmap
 			</label>
@@ -111,10 +122,12 @@
 	banned unless it captures, and no earlier board position may ever repeat
 	(positional superko). Two consecutive passes end the game. Scoring: every
 	stone on the board counts as alive, plus empty points fully surrounded by
-	one color; White gets 7.5 komi. There is no dead-stone marking — capture
+	one color; White gets komi — 6.5 by default here, since 7.5 measurably
+	favors White on 9×9 (the bot trains at 6.5 too; pick 5.5 / 6.5 / 7.5 above).
+	There is no dead-stone marking — capture
 	dead groups before the final passes. Two deliberate deviations from pure
 	Tromp–Taylor: suicide is banned outright (pure TT lets it self-clear) and
-	komi is fixed at 7.5 (pure TT leaves it to player agreement).</p>
+	komi is selectable per game (pure TT leaves it to player agreement).</p>
 	<p><strong>Honest caveats.</strong> These checkpoints are from a 3M-step
 	self-play run on Apple Silicon (M1/MPS). At 3M the net scores 10–22 against
 	GNU Go levels 1–10, but the strength is lopsided: 8–8 as White, 2–14 as
@@ -140,6 +153,7 @@
 	let netCache = new Map(), net = null, netLoading = null;
 	let game = null, mode = 'human-bot', humanColor = 0;
 	let temperature = 0.3, showHeat = true, botTimer = null, paused = false;
+	let komi = 6.5;
 	let hover = -1, heatPolicy = null;
 
 	const statusEl = $('status'), resultEl = $('result');
@@ -220,6 +234,7 @@
 		paused = false;
 		$('pauseBtn').textContent = 'Pause';
 		game = new WasmGame();
+		game.set_komi(komi);
 		heatPolicy = null;
 		hover = -1;
 		resultEl.textContent = '';
@@ -303,7 +318,8 @@
 			const b = game.score_black(), w = game.score_white();
 			const winner = b > w ? 'Black' : 'White';
 			resultEl.textContent = 'Game over — ' + winner + ' wins ' +
-				b.toFixed(1) + '–' + w.toFixed(1) + ' (area score, 7.5 komi)';
+				b.toFixed(1) + '–' + w.toFixed(1) + ' (area score, ' +
+				game.komi().toFixed(1) + ' komi)';
 		}
 	}
 
@@ -434,6 +450,10 @@
 		$('tempVal').textContent = temperature === 0 ? 'greedy' : temperature.toFixed(1);
 	});
 	$('heat').addEventListener('change', e => { showHeat = e.target.checked; render(); });
+	$('komi').addEventListener('change', e => {
+		komi = +e.target.value;
+		newGame(); // komi applies to new games
+	});
 	$('passBtn').addEventListener('click', () => onHumanMove(81));
 	$('newBtn').addEventListener('click', newGame);
 	$('pauseBtn').addEventListener('click', () => {

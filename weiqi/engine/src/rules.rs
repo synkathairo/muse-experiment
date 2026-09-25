@@ -151,6 +151,10 @@ pub struct Game {
     /// Zobrist hashes of every board layout seen so far (including the
     /// initial empty board). Positional superko = "result already in here".
     seen: std::collections::HashSet<u64>,
+    /// Komi added to White's area score. Defaults to [`KOMI`] (7.5); the
+    /// demo page lets visitors pick 5.5 / 6.5 / 7.5 per game. The net is
+    /// komi-blind — komi changes scoring only, never the bot's moves.
+    komi: f32,
 }
 
 /// SplitMix64: tiny deterministic PRNG for the fixed Zobrist stream.
@@ -201,7 +205,19 @@ impl Game {
             consecutive_passes: 0,
             captures: [0, 0],
             seen: std::collections::HashSet::from([board_hash(&[None; N_POINTS])]),
+            komi: KOMI,
         }
+    }
+
+    /// Komi for this game (default 7.5).
+    pub fn komi(&self) -> f32 {
+        self.komi
+    }
+
+    /// Set this game's komi. Only affects [`Game::score`]; legality and the
+    /// bot's policy are komi-blind.
+    pub fn set_komi(&mut self, komi: f32) {
+        self.komi = komi;
     }
 
     /// Side to move.
@@ -343,7 +359,8 @@ impl Game {
 
     /// Tromp–Taylor area score of the current position: stones on board plus empty
     /// points surrounded solely by one color. All stones count as alive
-    /// (Tromp–Taylor: no dead-stone removal). White's score includes [`KOMI`].
+    /// (Tromp–Taylor: no dead-stone removal). White's score includes this
+    /// game's komi (see [`Game::set_komi`]).
     pub fn score(&self) -> Score {
         let mut black = 0.0f32;
         let mut white = 0.0f32;
@@ -383,7 +400,7 @@ impl Game {
                 }
             }
         }
-        white += KOMI;
+        white += self.komi;
         Score { black, white }
     }
 
@@ -711,6 +728,27 @@ mod tests {
         assert_eq!(s.white, 7.0 + 9.0 + KOMI); // 7 stones + 9 points + komi
         assert_eq!(s.winner(), Color::White);
         assert!((s.margin() + KOMI).abs() < 1e-6); // black trails by exactly komi
+    }
+
+    #[test]
+    fn set_komi_changes_scoring_only() {
+        let mut g = play_seq(&[
+            (Color::Black, 2, 2),
+            (Color::White, 6, 6),
+            (Color::Black, 2, 6),
+            (Color::White, 6, 2),
+        ]);
+        assert_eq!(g.komi(), KOMI);
+        let s75 = g.score();
+        assert_eq!(s75.white, 2.0 + KOMI);
+        g.set_komi(6.5);
+        assert_eq!(g.komi(), 6.5);
+        let s65 = g.score();
+        assert_eq!(s65.black, s75.black); // stones/territory unchanged
+        assert!((s65.white - (2.0 + 6.5)).abs() < 1e-6);
+        assert_eq!(s65.winner(), Color::White); // komi still decides here
+        // legality is untouched by komi
+        assert!(g.play(Move::Play(40)).is_ok());
     }
 
     #[test]

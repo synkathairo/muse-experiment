@@ -85,12 +85,23 @@ impl WasmGame {
         self.inner.captures(Color::White)
     }
 
-    /// Final area scores (White includes 7.5 komi). Meaningful at game end.
+    /// Final area scores (White includes this game's komi). Meaningful at
+    /// game end.
     pub fn score_black(&self) -> f32 {
         self.inner.score().black
     }
     pub fn score_white(&self) -> f32 {
         self.inner.score().white
+    }
+
+    /// This game's komi (default 7.5).
+    pub fn komi(&self) -> f32 {
+        self.inner.komi()
+    }
+
+    /// Set this game's komi. Scoring only — the bot's moves never change.
+    pub fn set_komi(&mut self, komi: f32) {
+        self.inner.set_komi(komi);
     }
 
     /// Per-point ownership (81 bytes): 0 = neutral, 1 = black, 2 = white.
