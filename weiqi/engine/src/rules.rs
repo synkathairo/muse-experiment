@@ -1,18 +1,27 @@
-//! 9×9 Go rules: Tromp–Taylor-style legality, simple ko, Chinese area scoring.
+//! 9×9 Go rules: Tromp–Taylor-style legality, positional superko, Chinese area scoring.
 //!
 //! Point indexing is row-major, `idx = row * 9 + col`, with row 0 the **top** of the
 //! board and col 0 the **left** (matching SGF coordinates: SGF row 1 ↔ row 0,
 //! SGF column 'a' ↔ col 0). Use [`idx`] to build indices.
 //!
 //! Legality summary:
-//! - A stone may be played on any empty point that is not ko-banned.
+//! - A stone may be played on any empty point that is not ko-banned and does
+//!   not repeat a previous board.
 //! - Opponent groups left with no liberties are captured (removed).
 //! - Suicide is illegal: a move that captures nothing and leaves the placed
 //!   stone's own group with no liberties is rejected and the board is unchanged.
-//! - Simple ko: if a move captures exactly one stone, the placed stone forms a
-//!   single-stone group, and that group has exactly one liberty, the captured
-//!   point is banned for the next move only. (This is exactly the "would recreate
-//!   the previous position" test for single-point ko.)
+//! - Positional superko: a stone play whose resulting board layout matches any
+//!   earlier board in this game is illegal ([`IllegalMove::Superko`]). The ban
+//!   compares stone layouts only, not side to move. Passes are always legal:
+//!   a pass creates no new board, so exempting it is what lets a game reach
+//!   two consecutive passes instead of banning every pass as self-repeating.
+//!   Repetition is detected with Zobrist hashing (one random `u64` per
+//!   point/color from a fixed splitmix64 stream); every board hash is stored
+//!   in a `HashSet`, so the check is O(1) per move.
+//! - Simple ko is subsumed by superko (an immediate recapture recreates the
+//!   board from two plies ago), but the one-move ko ban is kept as a fast
+//!   path: it fires first with [`IllegalMove::Ko`], and [`Game::ko_point`]
+//!   still reports the ko point for display.
 //! - Pass is always legal. Two consecutive passes end the game.
 //! - Scoring is Chinese area scoring on the final position as-is (Tromp–Taylor:
 //!   no dead-stone removal disputes — everything on the board counts as alive).
@@ -97,8 +106,10 @@ pub enum IllegalMove {
     OutOfBounds,
     /// Point already occupied.
     Occupied,
-    /// Point is ko-banned this turn.
+    /// Point is ko-banned this turn (immediate simple-ko recapture).
     Ko,
+    /// Positional superko: the resulting board repeats an earlier one.
+    Superko,
     /// Suicide: captures nothing and leaves own group without liberties.
     Suicide,
     /// The game already ended (two passes).
@@ -137,6 +148,46 @@ pub struct Game {
     last_move: Option<Move>,
     consecutive_passes: u8,
     captures: [u32; 2], // [black_captures, white_captures]
+    /// Zobrist hashes of every board layout seen so far (including the
+    /// initial empty board). Positional superko = "result already in here".
+    seen: std::collections::HashSet<u64>,
+}
+
+/// SplitMix64: tiny deterministic PRNG for the fixed Zobrist stream.
+fn splitmix64(state: &mut u64) -> u64 {
+    *state = state.wrapping_add(0x9E3779B97F4A7C15);
+    let mut z = *state;
+    z = (z ^ (z >> 30)).wrapping_mul(0xBF58476D1CE4E5B9);
+    z = (z ^ (z >> 27)).wrapping_mul(0x94D049BB133111EB);
+    z ^ (z >> 31)
+}
+
+/// Zobrist keys: one fixed random `u64` per (point, color).
+fn zobrist_table() -> &'static [[u64; 2]; N_POINTS] {
+    static TABLE: std::sync::OnceLock<[[u64; 2]; N_POINTS]> = std::sync::OnceLock::new();
+    TABLE.get_or_init(|| {
+        let mut state = 0x9E3779B97F4A7C15u64;
+        let mut t = [[0u64; 2]; N_POINTS];
+        for p in 0..N_POINTS {
+            for c in 0..2 {
+                t[p][c] = splitmix64(&mut state);
+            }
+        }
+        t
+    })
+}
+
+/// Zobrist hash of a board: XOR of the keys of every stone.
+/// Stones only — positional superko compares layouts, not side to move.
+fn board_hash(board: &[Option<Color>; N_POINTS]) -> u64 {
+    let t = zobrist_table();
+    let mut h = 0u64;
+    for (p, s) in board.iter().enumerate() {
+        if let Some(c) = s {
+            h ^= t[p][c.index()];
+        }
+    }
+    h
 }
 
 impl Game {
@@ -149,6 +200,7 @@ impl Game {
             last_move: None,
             consecutive_passes: 0,
             captures: [0, 0],
+            seen: std::collections::HashSet::from([board_hash(&[None; N_POINTS])]),
         }
     }
 
@@ -254,6 +306,19 @@ impl Game {
                     }
                     return Err(IllegalMove::Suicide);
                 }
+
+                // Positional superko: the resulting board must not repeat any
+                // earlier board in this game. (Passes are exempt — see module
+                // docs — and never reach this branch.)
+                let h = board_hash(&self.board);
+                if self.seen.contains(&h) {
+                    self.board[p as usize] = None;
+                    for s in captured.iter() {
+                        self.board[*s as usize] = Some(foe);
+                    }
+                    return Err(IllegalMove::Superko);
+                }
+                self.seen.insert(h);
 
                 // Simple ko: exactly one stone captured, placed stone is alone,
                 // and its group has exactly one liberty (the captured point).
@@ -613,5 +678,84 @@ mod tests {
         assert_eq!(Move::from_index(0), Some(Move::Play(0)));
         assert_eq!(Move::from_index(81), Some(Move::Pass));
         assert_eq!(Move::from_index(82), None);
+    }
+
+    #[test]
+    fn positional_superko_bans_triple_ko_cycle() {
+        // Three independent ko shapes. Under simple ko alone, cycling takes
+        // through them (B k1, W k2, B k3, W k1, B k2, W k3, ...) loops
+        // forever — every take is at a different ko than the last. But the
+        // 6th take recreates the exact initial board, so positional superko
+        // must reject it.
+        fn ko_shape(g: &mut Game, victim: Color, r: usize, c: usize) {
+            // victim's stone at (r+1,c+1) has one liberty at (r+2,c+1);
+            // the capturer takes it there, leaving the ko at (r+1,c+1).
+            let wall = victim.opponent();
+            g.set(wall, r, c + 1);
+            g.set(wall, r + 1, c);
+            g.set(wall, r + 1, c + 2);
+            g.set(victim, r + 1, c + 1);
+            g.set(victim, r + 3, c + 1);
+            g.set(victim, r + 2, c);
+            g.set(victim, r + 2, c + 2);
+        }
+        let mut g = Game::new();
+        ko_shape(&mut g, Color::White, 0, 0); // k1: B takes (2,1), ko (1,1)
+        ko_shape(&mut g, Color::Black, 0, 4); // k2: W takes (2,5), ko (1,5)
+        ko_shape(&mut g, Color::White, 5, 0); // k3: B takes (7,1), ko (6,1)
+        g.set_to_move(Color::Black);
+        // set() bypasses move history; the built position counts as seen.
+        g.seen.insert(board_hash(&g.board));
+
+        let takes = [
+            (Color::Black, 2, 1), // T1: B takes k1
+            (Color::White, 2, 5), // T2: W takes k2
+            (Color::Black, 7, 1), // T3: B takes k3
+            (Color::White, 1, 1), // T4: W retakes k1
+            (Color::Black, 1, 5), // T5: B retakes k2
+        ];
+        for (color, r, c) in takes {
+            assert_eq!(g.to_move(), color, "wrong side before take at ({r},{c})");
+            assert!(
+                g.play(Move::Play(idx(r, c) as u8)).is_ok(),
+                "take at ({r},{c}) should be legal"
+            );
+        }
+        // T6: W retakes k3 — the board would exactly repeat the initial one.
+        assert_eq!(g.to_move(), Color::White);
+        assert_eq!(
+            g.play(Move::Play(idx(6, 1) as u8)),
+            Err(IllegalMove::Superko)
+        );
+        // Rejected move leaves the board unchanged.
+        assert_eq!(g.stone_at(idx(6, 1) as u8), None);
+        assert_eq!(g.stone_at(idx(7, 1) as u8), Some(Color::Black));
+        assert_eq!(g.to_move(), Color::White);
+    }
+
+    #[test]
+    fn zobrist_hash_order_independent() {
+        // Same board reached via different move orders hashes identically.
+        let mut a = Game::new();
+        for (r, c) in [(0, 0), (8, 8), (0, 1), (8, 7)] {
+            a.play(Move::Play(idx(r, c) as u8)).unwrap();
+        }
+        let mut b = Game::new();
+        for (r, c) in [(0, 1), (8, 7), (0, 0), (8, 8)] {
+            b.play(Move::Play(idx(r, c) as u8)).unwrap();
+        }
+        assert_eq!(board_hash(&a.board), board_hash(&b.board));
+        assert_eq!(a.seen.len(), b.seen.len());
+    }
+
+    #[test]
+    fn passes_stay_legal_under_superko() {
+        // A pass creates no new board, so it must stay legal even though its
+        // "resulting board" trivially repeats the current one.
+        let mut g = Game::new();
+        g.play(Move::Play(idx(4, 4) as u8)).unwrap();
+        assert_eq!(g.play(Move::Pass), Ok(0));
+        assert_eq!(g.play(Move::Pass), Ok(0));
+        assert!(g.is_over());
     }
 }

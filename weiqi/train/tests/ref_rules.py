@@ -8,11 +8,12 @@ to differ from both:
   in Rust),
 - legality: copy-the-board-and-simulate (vs precomputed _would_capture in
   rules.py, tentative-place-with-rollback in Rust),
-- ko: POSITIONAL repetition test — a move is ko-banned iff the resulting board
-  equals the previous board position (vs the "lone stone with one liberty"
-  heuristic in both other engines). The ko *point* is found by brute force:
-  the empty point whose play would recreate the previous position. If the
-  heuristic and the positional test ever disagree, that's a finding.
+- ko: POSITIONAL SUPERKO — a move is banned iff the resulting board equals
+  ANY previous board position in this game (vs the "lone stone with one
+  liberty" heuristic in both other engines). The ko *point* is found by brute
+  force: the empty point whose play would recreate the previous position. If
+  the heuristic and the superko test ever disagree on a single ko, that's a
+  finding.
 - scoring: flood fill with explicit adjacency sets (structurally different loop
   from selfplay.score).
 
@@ -85,15 +86,14 @@ class RefBoard:
         """[bool]*82: legal moves for color. Index 81 = pass (always legal)."""
         mask = [False] * 82
         mask[81] = True
-        prev = self.prev[-1] if self.prev else None
         for i in range(N * N):
             if self.b[i] != EMPTY or i == self.ko:
                 continue
             sim = self._simulate(i, color)
             if sim is None:
                 continue
-            if prev is not None and tuple(sim[0]) == prev:
-                continue  # positional ko: would recreate previous position
+            if tuple(sim[0]) in self.prev:
+                continue  # positional superko: would recreate an old position
             mask[i] = True
         return mask
 
@@ -115,8 +115,8 @@ class RefBoard:
         if sim is None:
             raise ValueError("suicide")
         nb, captured = sim
-        if self.prev and tuple(nb) == self.prev[-1]:
-            raise ValueError("ko (positional)")
+        if tuple(nb) in self.prev:
+            raise ValueError("ko (positional superko)")
         self.prev.append(tuple(self.b))
         before = self.prev[-1]
         self.b = nb

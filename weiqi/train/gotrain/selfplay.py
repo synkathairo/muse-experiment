@@ -4,7 +4,7 @@ No PufferLib anywhere: a small numpy/rules.py-based vectorized env with the exac
 §3 input planes and §1 rules, driven by a hand-rolled PPO loop (gotrain.ppo).
 
 Rules (PLAN.md §1, provisional but locked for this leg):
-  - 9x9, Tromp-Taylor-style legality (via gotrain.rules: no suicide, simple ko),
+  - 9x9, Tromp-Taylor-style legality (via gotrain.rules: no suicide, positional superko),
   - two-pass termination, Tromp-Taylor area scoring, komi 7.5,
   - reward 0 on non-terminal steps, +/-1 at game end from the LEARNER's perspective.
 

@@ -2,7 +2,7 @@
 
 The naive reference in tests/ref_rules.py is deliberately independent of
 gotrain/rules.py: flat board, copy-and-simulate legality, and POSITIONAL ko
-(a move is ko-banned iff it recreates the previous board) instead of the
+(a move is ko-banned iff it recreates any previous board (positional superko)) instead of the
 lone-stone heuristic. Agreement between the two on random games plus
 hand-built ko/snapback/seki/suicide positions is strong evidence both are
 right. The Rust engine (weiqi/engine) is diffed too when cargo is available.

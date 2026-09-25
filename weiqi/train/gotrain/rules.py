@@ -1,10 +1,11 @@
 """Minimal 9x9 Go rules for SGF replay (dataset building only).
 
 Tromp-Taylor-style legality: a move is legal if the point is empty, not ko-banned,
-and the resulting own group has a liberty or captures at least one stone
-(suicide forbidden). Simple ko only. This is intentionally lenient: for
-behavioral cloning it only gates which (position -> move) pairs we keep, and
-Japanese-rules (KGS) vs Chinese-rules legality differences are negligible here.
+not suicide, and does not repeat any earlier board (positional superko).
+The one-move ko point is kept as a fast path; passes are always legal.
+This is intentionally lenient: for behavioral cloning it only gates which
+(position -> move) pairs we keep, and Japanese-rules (KGS) vs Chinese-rules
+legality differences are negligible here.
 """
 
 EMPTY, BLACK, WHITE = 0, 1, 2
@@ -21,6 +22,10 @@ class Board:
         self.to_play = BLACK
         self.ko = None          # (r, c) or None: simple-ko-banned point
         self.last_move = None   # (r, c) or None (None also means pass / no move yet)
+        self.history = {self._tuple()}  # board tuples seen (positional superko)
+
+    def _tuple(self):
+        return tuple(v for row in self.grid for v in row)
 
     # -- group / liberty helpers -------------------------------------------------
     def _neighbors(self, r, c):
@@ -63,17 +68,30 @@ class Board:
         if self.ko is not None and (r, c) == self.ko:
             return False
         captured = self._would_capture(r, c, color)
-        if captured:
-            return True
-        # suicide check: does the new stone's group have a liberty?
+        # Tentatively apply, so suicide and superko are tested on the result.
+        for cr, cc in captured:
+            self.grid[cr][cc] = EMPTY
         self.grid[r][c] = color
-        _, libs = self._group(r, c)
+        if captured:
+            legal = True
+        else:
+            _, libs = self._group(r, c)
+            legal = bool(libs)
+        board_t = self._tuple()
+        # Revert the tentative move.
         self.grid[r][c] = EMPTY
-        return bool(libs)
+        for cr, cc in captured:
+            self.grid[cr][cc] = opponent(color)
+        if not legal:
+            return False
+        # Positional superko: the resulting board must not repeat any earlier
+        # one. (Passes are exempt — they create no new board — and stay legal.)
+        return board_t not in self.history
 
     def play(self, move, color):
         """Apply a move. move = (r, c) or None for pass. Returns True if legal."""
         if move is None:
+            self.history.add(self._tuple())  # board unchanged; harmless dup
             self.last_move = None
             self.ko = None
             self.to_play = opponent(color)
@@ -85,6 +103,7 @@ class Board:
         for cr, cc in captured:
             self.grid[cr][cc] = EMPTY
         self.grid[r][c] = color
+        self.history.add(self._tuple())
         # simple ko: exactly one stone captured, and the played stone is now a
         # lone single stone with exactly one liberty (the vacated point).
         stones, libs = self._group(r, c)
