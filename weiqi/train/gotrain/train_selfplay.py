@@ -150,7 +150,7 @@ def _captures_if(own, opp, r, c):
     return caps
 
 
-def greedy_capture_opponent(obs, masks):
+def greedy_capture_opponent(obs, masks, game_plies=None):
     """1-ply greedy tactical bot: maximizes immediate stones captured (random
     tie-break, pass loses ties); with nothing to capture, plays a random
     non-pass move. First rung above random on the eval ladder."""
