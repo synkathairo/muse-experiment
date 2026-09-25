@@ -1,4 +1,4 @@
-//! 9×9 Go rules: Tromp–Taylor-style legality, positional superko, Chinese area scoring.
+//! 9×9 Go rules: Tromp–Taylor-style legality, positional superko, Tromp–Taylor area scoring.
 //!
 //! Point indexing is row-major, `idx = row * 9 + col`, with row 0 the **top** of the
 //! board and col 0 the **left** (matching SGF coordinates: SGF row 1 ↔ row 0,
@@ -23,8 +23,8 @@
 //!   path: it fires first with [`IllegalMove::Ko`], and [`Game::ko_point`]
 //!   still reports the ko point for display.
 //! - Pass is always legal. Two consecutive passes end the game.
-//! - Scoring is Chinese area scoring on the final position as-is (Tromp–Taylor:
-//!   no dead-stone removal disputes — everything on the board counts as alive).
+//! - Scoring is Tromp–Taylor area scoring on the final position as-is:
+//!   no dead-stone removal disputes — everything on the board counts as alive.
 //!   Each player's score = stones on board + empty points surrounded solely by
 //!   that player; White adds [`KOMI`].
 
@@ -341,7 +341,7 @@ impl Game {
         }
     }
 
-    /// Chinese area score of the current position: stones on board plus empty
+    /// Tromp–Taylor area score of the current position: stones on board plus empty
     /// points surrounded solely by one color. All stones count as alive
     /// (Tromp–Taylor: no dead-stone removal). White's score includes [`KOMI`].
     pub fn score(&self) -> Score {

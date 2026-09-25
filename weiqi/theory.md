@@ -7,8 +7,8 @@ and for anyone reproducing the work.
 ## The game
 
 9×9 Go is a finite deterministic two-player zero-sum game with perfect
-information. Provisional rules used here: Chinese/Tromp–Taylor-style area
-scoring, simple ko (not full superko), suicide prohibited, 7.5 komi, two
+information. Provisional rules used here: modified Tromp–Taylor (area scoring
+with no dead-stone agreement phase), positional superko (not simple ko), suicide prohibited, 7.5 komi, two
 consecutive passes end the game. See `engine/` for the implementation and
 its tests.
 

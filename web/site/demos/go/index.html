@@ -38,8 +38,9 @@
 <p>
 	This page runs a real 9×9 Go engine <em>in your browser</em> via WebAssembly,
 	compiled from the <a href="https://github.com/synkathairo/muse-experiment/tree/main/weiqi/engine">weiqi-engine</a>
-	Rust code — exact rules (captures, suicide ban, positional superko, two-pass end,
-	area scoring with 7.5 komi) plus a hand-rolled 130k-parameter CNN forward pass.
+	Rust code — modified Tromp–Taylor rules (captures, suicide ban, positional
+	superko, two-pass end, area scoring with 7.5 komi) plus a hand-rolled
+	130k-parameter CNN forward pass.
 	Toggle the <strong>policy heatmap</strong> to see what the net is thinking.
 </p>
 
@@ -103,6 +104,17 @@
 </div>
 
 <div class="footnote">
+	<p><strong>Rules.</strong> Modified
+	<a href="https://Senseis.xmp.net/?TrompTaylorRules">Tromp–Taylor</a>:
+	Black moves first, then the sides alternate; a turn is a stone placement
+	or a pass, and groups left with no liberties are captured. Suicide is
+	banned unless it captures, and no earlier board position may ever repeat
+	(positional superko). Two consecutive passes end the game. Scoring: every
+	stone on the board counts as alive, plus empty points fully surrounded by
+	one color; White gets 7.5 komi. There is no dead-stone marking — capture
+	dead groups before the final passes. Two deliberate deviations from pure
+	Tromp–Taylor: suicide is banned outright (pure TT lets it self-clear) and
+	komi is fixed at 7.5 (pure TT leaves it to player agreement).</p>
 	<p><strong>Honest caveats.</strong> These checkpoints are from a clean 3M-step
 	self-play run on Apple Silicon (M1/MPS) with corrected training semantics —
 	the buggy CPU pilot's weights are gone. At 3M the net scores 10–22 against
