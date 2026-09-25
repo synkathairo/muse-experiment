@@ -37,9 +37,8 @@
 <p>
 	This page runs a real 9×9 Go engine <em>in your browser</em> via WebAssembly,
 	compiled from the <a href="https://github.com/synkathairo/muse-experiment/tree/main/weiqi/engine">weiqi-engine</a>
-	Rust code — exact rules (captures, suicide ban, simple ko, two-pass end,
+	Rust code — exact rules (captures, suicide ban, positional superko, two-pass end,
 	area scoring with 7.5 komi) plus a hand-rolled 130k-parameter CNN forward pass.
-	The bot's weights are fetched as static files, never baked into the page.
 	Toggle the <strong>policy heatmap</strong> to see what the net is thinking.
 </p>
 
@@ -109,9 +108,7 @@
 	GNU Go levels 1–10, but the strength is lopsided: 8–8 as White, 2–14 as
 	Black. Opening play going first is the known weakness; more steps alone
 	don't fix it. They exist so you can watch learning happen, and the numbers
-	above are the measured reality, not a strength claim.
-	The page reads checkpoints from <span style="font-family:monospace">manifest.json</span>,
-	so stronger stops can be added later with no code changes.</p>
+	above are the measured reality, not a strength claim.</p>
 	<p>How the training works is written up in
 	<a href="https://github.com/synkathairo/muse-experiment/blob/main/weiqi/theory.md">weiqi/theory.md</a>
 	— search-free PPO self-play, a different beast from AlphaZero's MCTS.</p>
