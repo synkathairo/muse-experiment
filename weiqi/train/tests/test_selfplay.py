@@ -445,5 +445,59 @@ class TestEvaluateTally(unittest.TestCase):
         self.assertEqual(list(counted), [0])
 
 
+class TestScoreReward(unittest.TestCase):
+    def test_score_rewards_bounded_and_sign_matches_winloss(self):
+        # score mode: rewards in [-1, 1], and the sign always agrees with the
+        # win/loss outcome of the same terminal position.
+        env = SelfPlayGo(num_envs=8, seed=1, opponent_fn=random_masked_player,
+                         reward_mode="score", reward_scale=15.0)
+        obs = env.reset()
+        rng = np.random.default_rng(0)
+        finished = 0
+        total_steps = 0
+        while finished < 16 and total_steps < 8000:
+            masks = env.legal_masks_learner()
+            actions = np.array([rng.choice(np.flatnonzero(m)) for m in masks])
+            obs, rewards, dones, terms, lens = env.step(actions)
+            for i in np.where(dones)[0]:
+                r = float(rewards[i])
+                self.assertGreaterEqual(r, -1.0)
+                self.assertLessEqual(r, 1.0)
+                w = winner(env.boards[int(i)])
+                lc = int(env.learner_color[int(i)])
+                if w != EMPTY:
+                    expect = 1.0 if w == lc else -1.0
+                    self.assertEqual(np.sign(r), np.sign(expect),
+                                     "score reward sign disagrees with winner")
+                else:
+                    self.assertEqual(r, 0.0)
+                finished += 1
+            if np.any(dones):
+                obs[np.where(dones)[0]] = env.reset(np.where(dones)[0])
+            total_steps += 1
+        self.assertGreaterEqual(finished, 16)
+
+    def test_score_reward_monotonic_in_margin(self):
+        # bigger learner margin -> bigger reward, via _reward on one env
+        env = SelfPlayGo(num_envs=1, seed=0, reward_mode="score",
+                         reward_scale=15.0)
+        env.reset()
+        # hand-craft: black owns everything vs white owns everything
+        from gotrain.selfplay import N
+        b = env.boards[0]
+        for r in range(N):
+            for c in range(N):
+                b.grid[r][c] = BLACK
+        env.learner_color[0] = BLACK
+        r_big_win = env._reward(0)
+        for r in range(N):
+            for c in range(N):
+                b.grid[r][c] = WHITE
+        r_big_loss = env._reward(0)
+        self.assertGreater(r_big_win, 0.99)
+        self.assertLess(r_big_loss, -0.99)
+        # (not exactly antisymmetric: komi is included in the margin)
+
+
 if __name__ == "__main__":
     unittest.main()

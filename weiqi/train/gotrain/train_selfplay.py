@@ -520,6 +520,11 @@ def main():
                          "a balanced win rate; eval/benchmark komi is separate. "
                          "Explicitly passed value wins on --resume.")
     ap.add_argument("--seed", type=int, default=7)
+    ap.add_argument("--reward-mode", default="winloss", choices=["winloss", "score"],
+                    help="terminal reward: +/-1 win/loss or tanh(score_margin/--reward-scale) "
+                         "from the learner's perspective (KataGo-style graded signal)")
+    ap.add_argument("--reward-scale", type=float, default=15.0,
+                    help="score points at which tanh reaches ~0.76 in score reward mode")
     ap.add_argument("--device", default="auto", choices=["auto", "cpu", "cuda", "mps"],
                     help="compute device; 'auto' picks cuda > mps > cpu")
     ap.add_argument("--resume", default=None, help="path to latest.pt")
@@ -581,12 +586,15 @@ def main():
 
     set_komi(args.train_komi)
     log(f"train_komi={args.train_komi}")
+    log(f"reward_mode={args.reward_mode} reward_scale={args.reward_scale}")
     if args.resume and abs(args.train_komi - prev_komi) > 1e-9:
         log(f"NOTE: train komi changed {prev_komi} -> {args.train_komi} on resume; "
             f"value head was calibrated to {prev_komi} and will recalibrate")
 
     env = SelfPlayGo(num_envs=args.num_envs, seed=args.seed,
                      max_plies=args.max_plies,
+                     reward_mode=args.reward_mode,
+                     reward_scale=args.reward_scale,
                      opponent_fn=make_snapshot_opponent(
                          snapshot, device,
                          dirichlet_plies=args.dirichlet_plies,

@@ -223,10 +223,13 @@ class SelfPlayGo:
     Finished envs are NOT auto-reset: call reset(idxs) for dones before stepping.
     """
 
-    def __init__(self, num_envs=32, seed=0, max_plies=MAX_PLIES, opponent_fn=None):
+    def __init__(self, num_envs=32, seed=0, max_plies=MAX_PLIES, opponent_fn=None,
+                 reward_mode="winloss", reward_scale=15.0):
         self.num_envs = num_envs
         self.max_plies = max_plies
         self.opponent_fn = opponent_fn
+        self.reward_mode = reward_mode
+        self.reward_scale = reward_scale
         self.rng = np.random.default_rng(seed)
         self.boards = [Board(N) for _ in range(num_envs)]
         self.learner_color = np.full(num_envs, BLACK, dtype=np.int64)
@@ -279,7 +282,16 @@ class SelfPlayGo:
         return False
 
     def _reward(self, i):
-        """+/-1 terminal reward from the learner's perspective (0 on draw)."""
+        """Terminal reward from the learner's perspective (0 on draw).
+
+        winloss: +/-1 (default). score: tanh(margin / reward_scale), where
+        margin is the learner's Tromp-Taylor score difference — graded signal
+        in the same [-1, 1] range PPO is tuned for.
+        """
+        if self.reward_mode == "score":
+            mgn_abs = margin_label(self.boards[i])
+            mgn = mgn_abs if int(self.learner_color[i]) == BLACK else -mgn_abs
+            return float(np.tanh(mgn / self.reward_scale))
         w = winner(self.boards[i])
         if w == EMPTY:
             return 0.0
