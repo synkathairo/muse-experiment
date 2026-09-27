@@ -92,6 +92,59 @@ def dirichlet_noised_dist(dist, masks, noise_mask, alpha, eps):
     return torch.distributions.Categorical(probs=out)
 
 
+# Precomputed dihedral group permutations for 9x9. _PERMS[s, old_idx] = new_idx.
+# sym_idx = k*2 + flip (k=0..3 rotations, flip=0/1). Computed once at import.
+def _build_dihedral_perms():
+    rr, cc = torch.meshgrid(torch.arange(9), torch.arange(9), indexing='ij')
+    perms = []
+    for k in range(4):
+        for f in range(2):
+            r, c = rr.clone(), cc.clone()
+            if f:
+                c = 8 - c
+            for _ in range(k):
+                r, c = 8 - c, r
+            perms.append((r * 9 + c).flatten())
+    p = torch.stack(perms)  # (8, 81)
+    return p, torch.argsort(p, dim=1)  # (perms, inverse perms)
+
+_DIHEDRAL_PERMS, _DIHEDRAL_INV_PERMS = _build_dihedral_perms()
+
+
+def _symmetry_transforms(batch_size, device):
+    """Sample a random dihedral symmetry per env. Returns sym_idx (B,) in 0..7."""
+    k = torch.randint(0, 4, (batch_size,), device=device)
+    flip = torch.randint(0, 2, (batch_size,), device=device)
+    return k * 2 + flip
+
+
+@torch.no_grad()
+def _apply_symmetry(obs, masks, sym_idx):
+    """Apply per-sample dihedral symmetry. Returns (obs_aug, masks_aug, perm, inv_perm).
+    obs: (B, C, 9, 9), masks: (B, 82). perm[b, old]=new, inv_perm[b, new]=old.
+    """
+    device = obs.device
+    B, C = obs.shape[0], obs.shape[1]
+    # Index on CPU (perms live there), then move to device. Avoids device-sync
+    # from indexing a CPU tensor with a device tensor.
+    sym_cpu = sym_idx.cpu()
+    perm = _DIHEDRAL_PERMS[sym_cpu].to(device)      # (B, 81)
+    inv_perm = _DIHEDRAL_INV_PERMS[sym_cpu].to(device)
+
+    # Obs: gather spatial dims through the INVERSE permutation.
+    # We want obs_aug[b,:,new] = obs[b,:,old] where new=perm[old],
+    # so obs_aug[b,:,i] = obs[b,:,inv_perm[i]].
+    inv_perm_exp = inv_perm.unsqueeze(1).expand(B, C, 81)
+    obs_aug = obs.view(B, C, 81).gather(2, inv_perm_exp).view(B, C, 9, 9)
+
+    # Masks: new_mask[new] = old_mask[old], so gather with inverse
+    masks_aug = torch.empty_like(masks)
+    masks_aug[:, :81] = masks[:, :81].gather(1, inv_perm)
+    masks_aug[:, 81] = masks[:, 81]  # pass unaffected
+
+    return obs_aug, masks_aug, perm, inv_perm
+
+
 @torch.no_grad()
 def sample_actions(policy, obs_t, masks_t, noise_mask=None,
                    dirichlet_alpha=0.05, dirichlet_eps=0.25):
@@ -689,18 +742,33 @@ def main():
             if args.dirichlet_plies > 0:
                 noise_mask = torch.from_numpy(
                     env.plies < args.dirichlet_plies).to(device)
-            actions, logps, values = sample_actions(
-                policy, obs_t, masks_t, noise_mask=noise_mask,
+            # Symmetry augmentation: random dihedral transform per env.
+            # The net trains on the transformed (obs, action, mask); the env
+            # steps with the action mapped back to the original frame.
+            # This is ~8x free data: Go is invariant under all 8 symmetries.
+            sym_idx = _symmetry_transforms(N, device)
+            obs_aug, masks_aug, perm, inv_perm = _apply_symmetry(
+                obs_t, masks_t, sym_idx)
+            actions_aug, logps_aug, values_aug = sample_actions(
+                policy, obs_aug, masks_aug, noise_mask=noise_mask,
                 dirichlet_alpha=args.dirichlet_alpha,
                 dirichlet_eps=args.dirichlet_eps)
+            # Map augmented actions back to original frame for env.step.
+            # Pass (81) is unaffected by symmetries.
+            not_pass = actions_aug < 81
+            batch_idx = torch.arange(N, device=device)
+            inv_actions = torch.where(
+                not_pass,
+                inv_perm[batch_idx, actions_aug.clamp(max=80)],
+                actions_aug)
+            # Store the AUGMENTED versions (consistent obs/action/mask/logp).
+            b_obs[t] = obs_aug.cpu()
+            b_masks[t] = masks_aug.cpu()
+            b_actions[t] = actions_aug.cpu()
+            b_logps[t] = logps_aug.cpu()
+            b_values[t] = values_aug.cpu()
 
-            b_obs[t] = obs_t.cpu()
-            b_masks[t] = masks_t.cpu()
-            b_actions[t] = actions.cpu()
-            b_logps[t] = logps.cpu()
-            b_values[t] = values.cpu()
-
-            obs, rewards, dones, terms, lens = env.step(actions.cpu().numpy())
+            obs, rewards, dones, terms, lens = env.step(inv_actions.cpu().numpy())
             b_rewards[t] = torch.from_numpy(rewards)
             b_terms[t] = torch.from_numpy(terms)
             b_truncs[t] = torch.from_numpy(dones & ~terms)

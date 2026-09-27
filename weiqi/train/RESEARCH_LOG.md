@@ -229,3 +229,63 @@ The original gap was likely the optimizer confound (fresh vs warm Adam), not the
 1. Always verify seed actually controls RNG after resume (test: different seeds → different trajectories).
 2. Match optimizer state handling between arms (fresh vs migrated is a confound).
 3. A single training replicate (n=1) is not evidence; the seed bug made this worse.
+
+### Future directions: candidate strategies (2026-09-27) — from Sol + Astra consultations
+
+No OGS/supervised data allowed. All ideas target the 130K-param PPO self-play setup.
+
+**1. Archived-position continuation self-play (Astra's top bet, Sol's #1)**
+*Reasoning:* The agent rarely trains on meaningful midgame/endgame states because every episode starts from move zero. Most learning signal comes from opening trajectories; the critic never sees enough diverse late-game positions to calibrate. By archiving self-play positions and restarting 50% of episodes from midgame states, the policy and value heads get dense training on the positions where games are actually decided.
+*Variants:* (a) Simple: uniform sample from rolling archive at 25/50/75/100% game progress. (b) Adaptive (Astra): prioritize positions where critic is uncertain, policy entropy is high, or consecutive checkpoints disagree: $w(s) = |V_{current}(s) - V_{older}(s)|$. Keep fraction of normal games to avoid distribution collapse. Compatible with on-policy PPO if each restart is a fresh episode.
+*Evidence:* Go-Exploit 9x9 study (arXiv:2302.12359) supports the simple version; Cheng et al. report 58.5% sample efficiency gain from uncertainty-guided branching (but in MCTS/AlphaZero, not PPO — transfer uncertain).
+*Kill criterion (Astra):* No improvement in 200-game GNU Go win rate AND critic calibration on archived positions by 1-2M steps.
+
+**2. Bigger network (my #1, Sol's #2, Astra's #3)**
+*Reasoning:* The 130K net may be at capacity. Distillation failed (student couldn't absorb 10.5M teacher), PPO has plateaued, auxiliary heads and input planes both null. A 500K-1M param net raises the ceiling. But: retrain from scratch, update Rust/WASM inference, re-export — multi-day project.
+*Sol's caution:* Run a controlled ~500K comparison before committing to 1M. Benchmark CPU inference throughput first — if it's too slow, the strength gain isn't usable.
+*Astra's caution:* Don't overclaim capacity from distillation; 29.9% top-1 doesn't measure consequential choices. The value target may be the bottleneck, not the trunk.
+
+**3. Short-horizon value targets (Sol's #3, Astra's #2)**
+*Reasoning:* The critic trains against a noisy binary terminal outcome propagated over 100+ moves. KataGo trains auxiliary value heads at multiple horizons (~6, ~16, ~50 moves on 19x19, shorter on 9x9), giving lower-variance feedback. This is a bias-variance tradeoff: short-horizon targets are biased (bootstrap from current value) but much less noisy.
+*Caveat:* KataGo's targets average future MCTS values; ours would bootstrap from PPO value predictions — materially different. Cheap to test (auxiliary heads, no architecture lock-in).
+
+**4. Global pooling path (Sol's missing idea)**
+*Reasoning:* Four 3x3 conv layers have a 9-point nominal receptive field, but thin CNNs struggle to combine board-wide information into the policy/value heads. A small global-pooling branch (e.g., mean/max pool over spatial dims → FC → concat with head input) gives the heads direct access to whole-board features. KataGo's ablation showed clear learning-efficiency benefit. Sharper capacity test than input planes, at roughly fixed parameter count.
+
+**5. Symmetry augmentation (Astra's free lunch — CURRENTLY MISSING)**
+*Reasoning:* Go is invariant under all 8 dihedral symmetries (rotations + reflections). Training on all 8 versions of each position is ~8x effective data for free. Astra: "nearly free and should beat almost any hand-designed input plane." Verified 2026-09-27: NOT currently implemented in gotrain/. This should be added immediately regardless of other directions.
+
+**6. Population Based Training (my #2, Sol's #4)**
+*Reasoning:* Instead of fixed hyperparameters, maintain a population that copies the best and mutates hyperparameters (LR, ent-coef, etc.) mid-training. Wu et al. 2020 showed gains on 9x9 Go specifically.
+*Sol's caution:* Their result used 16 agents sharing AlphaZero self-play data; low self-play overhead doesn't transfer to our CPU PPO trainer. Try LR decay on continuation first — cheaper.
+
+**7. MCTS-generated policy targets / AlphaZero-style (my #4, Sol's #5, Astra's "serious alternative")**
+*Reasoning:* Use search during training to produce improved move targets (visit distributions), train policy to imitate them. This is approximate policy iteration, not policy gradient — a different learning paradigm. Our MCTS-100-at-play-time null does NOT test this; search at evaluation exposes a weak policy, search during training improves the targets.
+*Astra's practical suggestion:* "Search-lite" — search only a subset of moves (8-16 early/midgame decisions) to avoid making CPU throughput the confound. Full AlphaZero changes the entire training loop.
+
+**Evaluation methodology (Sol + Astra agree):**
+- 32-game ladder is a smoke test, not a decision tool. 7-25 has 95% CI of 11%-39%.
+- For decisions: 200+ games per comparison, fixed openings, alternating colors, balanced by level.
+- Add direct head-to-head vs incumbent checkpoint (not just GNU Go).
+- Keep a final opponent set out of checkpoint selection to avoid overfitting to the ladder.
+- Our komi 6.5 conclusion (from 32 games) should be treated as provisional.
+
+**Consensus next steps:**
+1. Add symmetry augmentation immediately (free).
+2. Test archived-position continuation (Astra's bet).
+3. Benchmark 500K net CPU throughput (informs bigger-net decision).
+4. Consider global pooling as a cheap architectural test.
+
+### Symmetry augmentation (2026-09-27) — IMPLEMENTED
+
+Astra flagged that all 8 dihedral symmetries were not used during PPO. Verified: no augmentation existed. Implemented in `gotrain/train_selfplay.py`:
+- Per-env random symmetry (rot90 k=0..3 x flip/no-flip) applied to obs and masks before `sample_actions`.
+- Actions sampled in the augmented frame; mapped back via inverse for `env.step`.
+- Stored (obs, masks, actions, logps) are all in the augmented frame, so PPO's importance ratio stays valid.
+- Pass (81) unaffected. Value targets unchanged (win/loss is symmetric).
+
+Bugs caught during implementation:
+1. First attempted augmentation in `ppo.py::ppo_update` — wrong, because stored logps were computed pre-transform. Moved to rollout time.
+2. Inserted helpers stole `@torch.no_grad()` from `sample_actions` (decorator ended up on wrong function). Restored.
+
+Tests: 75 passed. Smoke training run (256 steps) completes. This is ~8x free data; should have been there from the start.
