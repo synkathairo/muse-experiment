@@ -25,11 +25,23 @@ import numpy as np
 import torch
 
 from .net import GoNet, EXPORT_ORDER, ordered_tensors
+from .net import EXPORT_ORDER_TACTICAL, ordered_tensors_tactical
 from .net_aux import to_gonet_state_dict
 
 
 def export_weights(model, out_path):
     tensors = ordered_tensors(model)
+    with open(out_path, "wb") as f:
+        for t in tensors:
+            f.write(t.to(torch.float16).numpy().astype("<f2").tobytes())
+    return out_path
+
+
+def export_weights_tactical(model, out_path):
+    """Export a GoNetTactical to the same flat fp16 layout, but with the
+    13-channel conv1 (EXPORT_ORDER_TACTICAL). Experimental; the demo path
+    does not consume this yet (phase 2, pending the kill test)."""
+    tensors = ordered_tensors_tactical(model)
     with open(out_path, "wb") as f:
         for t in tensors:
             f.write(t.to(torch.float16).numpy().astype("<f2").tobytes())

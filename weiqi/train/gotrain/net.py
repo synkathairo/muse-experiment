@@ -35,6 +35,33 @@ EXPORT_ORDER = [
 # Locked total parameter count (PLAN.md §3). Asserted by tests/test_smoke.py.
 EXPECTED_PARAMS = 130522
 
+# Experimental 13-plane variant (gotrain.tactical) — NOT part of the locked
+# spec. Shares the trunk and both heads with GoNet; only the first convolution
+# takes 13 input channels instead of 6.
+TACTICAL_IN_PLANES = 13
+EXPORT_ORDER_TACTICAL = [
+    ("conv1.weight", (64, 13, 3, 3)),
+    ("conv1.bias", (64,)),
+    ("conv2.weight", (64, 64, 3, 3)),
+    ("conv2.bias", (64,)),
+    ("conv3.weight", (64, 64, 3, 3)),
+    ("conv3.bias", (64,)),
+    ("conv4.weight", (64, 64, 3, 3)),
+    ("conv4.bias", (64,)),
+    ("pol_conv.weight", (2, 64, 1, 1)),
+    ("pol_conv.bias", (2,)),
+    ("pol_fc.weight", (82, 162)),
+    ("pol_fc.bias", (82,)),
+    ("val_conv.weight", (1, 64, 1, 1)),
+    ("val_conv.bias", (1,)),
+    ("val_fc1.weight", (32, 81)),
+    ("val_fc1.bias", (32,)),
+    ("val_fc2.weight", (1, 32)),
+    ("val_fc2.bias", (1,)),
+]
+# 130522 + 64*7*3*3 (the 7 extra input channels of conv1).
+EXPECTED_PARAMS_TACTICAL = 134554
+
 # Move index 81 = pass; 0..80 = row-major board points (row 0 = top, col 0 = left).
 PASS_INDEX = 81
 N_POINTS = 81
@@ -93,5 +120,32 @@ def ordered_tensors(model):
         t = sd[key]
         if tuple(t.shape) != shape:
             raise ValueError(f"export order mismatch for {key}: {tuple(t.shape)} != {shape}")
+        out.append(t.detach().contiguous())
+    return out
+
+
+class GoNetTactical(GoNet):
+    """Experimental 13-plane variant (gotrain.tactical).
+
+    Identical trunk/heads to the locked GoNet; only conv1 takes 13 input
+    channels (6 base planes + 7 tactical planes). NOT part of the locked
+    spec: the demo/Rust inference path is untouched (phase 2, pending the
+    kill test).
+    """
+
+    def __init__(self):
+        super().__init__()
+        self.conv1 = nn.Conv2d(TACTICAL_IN_PLANES, 64, kernel_size=3, padding=1)
+
+
+def ordered_tensors_tactical(model):
+    """Return model tensors as a list in EXPORT_ORDER_TACTICAL, verifying shapes."""
+    sd = model.state_dict()
+    out = []
+    for key, shape in EXPORT_ORDER_TACTICAL:
+        t = sd[key]
+        if tuple(t.shape) != shape:
+            raise ValueError(f"tactical export order mismatch for {key}: "
+                             f"{tuple(t.shape)} != {shape}")
         out.append(t.detach().contiguous())
     return out

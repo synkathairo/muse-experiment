@@ -202,20 +202,31 @@ def observe(board, color):
     )
 
 
+def observe_tactical(board, color):
+    """(13,9,9) float32 planes from `color`-to-move's perspective.
+
+    Experimental (gotrain.tactical): the 6 locked planes plus 7 tactical
+    planes (group liberty buckets + ko prohibition).
+    """
+    from . import tactical
+    return tactical.encode_tactical(board, color)
+
+
 # ---------------------------------------------------------------------------
 # Vectorized self-play environment
 # ---------------------------------------------------------------------------
 class SelfPlayGo:
     """num_envs parallel 9x9 games: learner (alternating color) vs frozen snapshot.
 
-    opponent_fn: callable (obs (B,6,9,9) float32, masks (B,82) bool)
-                 -> int64 (B,) move indices. The trainer wires this to the frozen
-                 snapshot net (sampled, masked); tests may pass a random player.
+    opponent_fn: callable (obs (B,P,9,9) float32, masks (B,82) bool)
+                 -> int64 (B,) move indices, where P = 6 (13 with tactical=True).
+                 The trainer wires this to the frozen snapshot net (sampled,
+                 masked); tests may pass a random player.
 
     step() applies one learner move and then the opponent's reply in every live
     env, so each call advances the learner by exactly one PPO sample. Returns
     (obs, rewards, dones, terms, ep_lens):
-      obs      (num_envs,6,9,9) float32, always the learner's turn to move
+      obs      (num_envs,P,9,9) float32, always the learner's turn to move
       rewards  float32, 0 except +/-1 (learner's perspective) on game end
       dones    bool, game over (terminal or truncated)
       terms    bool, TRUE terminal (two passes); False => truncation (max plies)
@@ -224,12 +235,14 @@ class SelfPlayGo:
     """
 
     def __init__(self, num_envs=32, seed=0, max_plies=MAX_PLIES, opponent_fn=None,
-                 reward_mode="winloss", reward_scale=15.0):
+                 reward_mode="winloss", reward_scale=15.0, tactical=False):
         self.num_envs = num_envs
         self.max_plies = max_plies
         self.opponent_fn = opponent_fn
         self.reward_mode = reward_mode
         self.reward_scale = reward_scale
+        self.tactical = tactical
+        self.n_planes = 13 if tactical else 6
         self.rng = np.random.default_rng(seed)
         self.boards = [Board(N) for _ in range(num_envs)]
         self.learner_color = np.full(num_envs, BLACK, dtype=np.int64)
@@ -262,10 +275,16 @@ class SelfPlayGo:
         return self._observe_learner(idxs)
 
     # -- internal move plumbing ----------------------------------------------
+    def _encode(self, board, color):
+        """Learner/opponent observation: 6-plane or 13-plane per self.tactical."""
+        if self.tactical:
+            return observe_tactical(board, color)
+        return observe(board, color)
+
     def _observe_learner(self, idxs):
-        obs = np.zeros((len(idxs), 6, N, N), dtype=np.float32)
+        obs = np.zeros((len(idxs), self.n_planes, N, N), dtype=np.float32)
         for k, i in enumerate(idxs):
-            obs[k] = observe(self.boards[int(i)], self.learner_color[int(i)])
+            obs[k] = self._encode(self.boards[int(i)], self.learner_color[int(i)])
         return obs
 
     def _apply(self, i, move_idx, color):
@@ -302,12 +321,12 @@ class SelfPlayGo:
         idxs = np.asarray(idxs, dtype=np.int64)
         if len(idxs) == 0 or self.opponent_fn is None:
             return
-        obs = np.zeros((len(idxs), 6, N, N), dtype=np.float32)
+        obs = np.zeros((len(idxs), self.n_planes, N, N), dtype=np.float32)
         masks = np.zeros((len(idxs), N_MOVES), dtype=bool)
         for k, i in enumerate(idxs):
             i = int(i)
             color = opponent(self.learner_color[i])
-            obs[k] = observe(self.boards[i], color)
+            obs[k] = self._encode(self.boards[i], color)
             masks[k] = legal_mask(self.boards[i], color)
         opp_actions = np.asarray(
             self.opponent_fn(obs, masks, self.plies[idxs]), dtype=np.int64)

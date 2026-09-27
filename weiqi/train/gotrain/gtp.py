@@ -19,8 +19,8 @@ import sys
 import numpy as np
 import torch
 
-from . import features, rules, selfplay
-from .net import GoNet
+from . import features, rules, selfplay, tactical
+from .net import GoNet, GoNetTactical
 from .net_aux import to_gonet_state_dict
 
 COLS = "ABCDEFGHJKLMNOPQRST"  # GTP skips 'I'
@@ -58,21 +58,27 @@ def gtp_color(s):
 
 
 class GTPEngine:
-    def __init__(self, model, temperature=0.0):
+    def __init__(self, model, temperature=0.0, tactical=False):
         self.model = model
         self.model.eval()
         self.temperature = temperature
+        self.tactical = tactical
         self.board = rules.Board(9)
 
-    def genmove(self, color):
-        mask = selfplay.legal_mask(self.board, color)
-        planes = features.encode(
+    def _encode(self, color):
+        if self.tactical:
+            return tactical.encode_tactical(self.board, color)
+        return features.encode(
             self.board.stones(color),
             self.board.stones(rules.opponent(color)),
             last_move=self.board.last_move,
             black_to_move=(color == rules.BLACK),
             ko_point=self.board.ko,
         )
+
+    def genmove(self, color):
+        mask = selfplay.legal_mask(self.board, color)
+        planes = self._encode(color)
         with torch.no_grad():
             logits, _ = self.model(torch.from_numpy(planes).unsqueeze(0))
         logits = logits.squeeze(0).numpy().astype(np.float64)
@@ -178,9 +184,17 @@ def main():
     args = ap.parse_args()
     ck = torch.load(args.checkpoint, map_location="cpu", weights_only=False)
     sd = ck["model"] if isinstance(ck, dict) and "model" in ck else ck
-    model = GoNet()
-    model.load_state_dict(to_gonet_state_dict(sd))
-    serve(GTPEngine(model, temperature=args.temperature))
+    sd = to_gonet_state_dict(sd)
+    # Tactical checkpoints (13-plane conv1) are auto-detected; the ladder can
+    # then benchmark feature branches with no extra flags.
+    if sd["conv1.weight"].shape[1] == 13:
+        model = GoNetTactical()
+        model.load_state_dict(sd)
+        serve(GTPEngine(model, temperature=args.temperature, tactical=True))
+    else:
+        model = GoNet()
+        model.load_state_dict(sd)
+        serve(GTPEngine(model, temperature=args.temperature))
 
 
 if __name__ == "__main__":

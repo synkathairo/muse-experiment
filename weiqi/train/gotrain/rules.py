@@ -204,3 +204,29 @@ class Board:
                 if self.grid[r][c] == color:
                     arr[r, c] = True
         return arr
+
+    def liberty_map(self):
+        """(size,size) int array: group liberty count per stone point, 0 on empty.
+
+        Each connected group is flood-filled exactly once (visited set), so
+        total work is O(size^2). Deterministic; feeds the tactical input
+        planes (gotrain.tactical).
+        """
+        import numpy as np
+
+        n = self.size
+        out = np.zeros((n, n), dtype=np.int64)
+        seen = bytearray(n * n)
+        for r in range(n):
+            grow = self.grid[r]
+            for c in range(n):
+                p = r * n + c
+                if grow[c] == EMPTY or seen[p]:
+                    continue
+                stones, libs = self._group_int(p)
+                nl = len(libs)
+                for s in stones:
+                    seen[s] = 1
+                    sr, sc = self._rc[s]
+                    out[sr, sc] = nl
+        return out

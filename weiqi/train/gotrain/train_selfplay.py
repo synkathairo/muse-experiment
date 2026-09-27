@@ -47,7 +47,7 @@ import numpy as np
 import torch
 import torch.nn.functional as F
 
-from .export import export_weights
+from .export import export_weights, export_weights_tactical
 from .net import GoNet, N_POINTS
 from .net_aux import (GoNetAux, load_trunk_from_gonet, check_trunk_resume,
                       to_gonet_state_dict)
@@ -280,10 +280,12 @@ def _tally_finished(done_idxs, rewards, wins, played, n_games):
 
 
 @torch.no_grad()
-def evaluate(policy, opponent_fn, n_games, device, seed=12345, max_plies=None):
+def evaluate(policy, opponent_fn, n_games, device, seed=12345, max_plies=None,
+             tactical=False):
     """Win rate of the greedy learner vs opponent_fn (learner alternates color)."""
     env = SelfPlayGo(num_envs=n_games, seed=seed,
-                     max_plies=max_plies or 3 * 9 * 9, opponent_fn=opponent_fn)
+                     max_plies=max_plies or 3 * 9 * 9, opponent_fn=opponent_fn,
+                     tactical=tactical)
     # stagger starting colors: without this every env's first game has the
     # learner as Black, and greedy-vs-greedy self-play is deterministic, so the
     # "win rate" would really be one game repeated n_games times.
@@ -528,7 +530,26 @@ def main():
     ap.add_argument("--device", default="auto", choices=["auto", "cpu", "cuda", "mps"],
                     help="compute device; 'auto' picks cuda > mps > cpu")
     ap.add_argument("--resume", default=None, help="path to latest.pt")
+    ap.add_argument("--tactical", action="store_true",
+                    help="use the experimental 13-plane tactical observation "
+                         "(gotrain.tactical) and GoNetTactical instead of the "
+                         "locked 6-plane GoNet/GoNetAux")
+    ap.add_argument("--no-anneal-lr", action="store_true",
+                    help="disable linear LR annealing (constant LR); needed for "
+                         "continued-training legs where the annealed schedule "
+                         "would sit at ~0")
     args = ap.parse_args()
+
+    # A tactical training checkpoint carries tactical=True in its hparams; if
+    # the user didn't say --tactical explicitly, follow the checkpoint so the
+    # policy architecture matches the resumed weights.
+    if args.resume and "tactical" not in explicit_cli_flags():
+        _ck0 = torch.load(args.resume, map_location="cpu", weights_only=False)
+        if _ck0.get("hparams", {}).get("tactical"):
+            args.tactical = True
+            print("resume: tactical checkpoint detected; enabling --tactical",
+                  flush=True)
+        del _ck0
 
     os.makedirs(args.out, exist_ok=True)
     torch.manual_seed(args.seed)
@@ -540,14 +561,21 @@ def main():
                     clip_coef=args.clip_coef, vf_coef=args.vf_coef,
                     ent_coef=args.ent_coef, max_grad_norm=args.max_grad_norm,
                     update_epochs=args.update_epochs,
-                    minibatch_size=args.minibatch_size)
+                    minibatch_size=args.minibatch_size,
+                    anneal_lr=not args.no_anneal_lr)
 
-    # Always GoNetAux (locked GoNet trunk + training-only heads): one code
-    # path for both legs, so the ownership experiment isolates the learning
-    # signal. With --ownership off the aux heads get no gradients and the
-    # run is plain policy/value PPO on the identical trunk.
-    policy = GoNetAux().to(device)
-    snapshot = GoNetAux().to(device)   # frozen opponent; refreshed every K iters
+    # --tactical: experimental 13-plane GoNetTactical (gotrain.tactical).
+    # Otherwise the locked GoNet trunk + training-only aux heads (GoNetAux):
+    # one code path for both legs, so the ownership experiment isolates the
+    # learning signal. With --ownership off the aux heads get no gradients and
+    # the run is plain policy/value PPO on the identical trunk.
+    if args.tactical:
+        from .net import GoNetTactical
+        policy = GoNetTactical().to(device)
+        snapshot = GoNetTactical().to(device)  # frozen opponent
+    else:
+        policy = GoNetAux().to(device)
+        snapshot = GoNetAux().to(device)   # frozen opponent; refreshed every K iters
     snapshot.load_state_dict(policy.state_dict())
     optimizer = torch.optim.Adam(policy.parameters(), lr=args.lr)
     hparams = {k: v for k, v in vars(args).items() if k != "resume"}
@@ -567,8 +595,17 @@ def main():
                         clip_coef=args.clip_coef, vf_coef=args.vf_coef,
                         ent_coef=args.ent_coef, max_grad_norm=args.max_grad_norm,
                         update_epochs=args.update_epochs,
-                        minibatch_size=args.minibatch_size)
+                        minibatch_size=args.minibatch_size,
+                        anneal_lr=not args.no_anneal_lr)
         print(f"resumed from {args.resume} at step {step} (iter {ppo_iter})", flush=True)
+
+    # --seed takes precedence over RNG state restored from the checkpoint.
+    # load_ckpt restores torch/numpy RNG (for bit-reproducible continuation),
+    # but that nullifies --seed: two runs resuming from the same checkpoint
+    # with different seeds would train identically. Re-seeding here ensures
+    # the seed controls the training trajectory.
+    torch.manual_seed(args.seed)
+    np.random.seed(args.seed)
 
     logf = open(os.path.join(args.out, "train.log"), "a")
 
@@ -579,8 +616,12 @@ def main():
         logf.flush()
 
     log(f"start: {json.dumps(hparams)} resuming_at={step}")
-    log(f"device={device} params={policy.param_count()} "
-        f"(trunk {policy.trunk.param_count()}, locked GoNet spec)")
+    if args.tactical:
+        log(f"device={device} params={policy.param_count()} "
+            f"(GoNetTactical, experimental 13-plane input)")
+    else:
+        log(f"device={device} params={policy.param_count()} "
+            f"(trunk {policy.trunk.param_count()}, locked GoNet spec)")
     log(f"ownership_aux={args.ownership} aux_own_w={args.aux_own_w} "
         f"aux_margin_w={args.aux_margin_w} aux_epochs={args.aux_epochs}")
 
@@ -595,6 +636,7 @@ def main():
                      max_plies=args.max_plies,
                      reward_mode=args.reward_mode,
                      reward_scale=args.reward_scale,
+                     tactical=args.tactical,
                      opponent_fn=make_snapshot_opponent(
                          snapshot, device,
                          dirichlet_plies=args.dirichlet_plies,
@@ -617,7 +659,7 @@ def main():
 
     while step < args.total_steps:
         # ---- rollout ------------------------------------------------------
-        b_obs = torch.zeros(T, N, 6, 9, 9)
+        b_obs = torch.zeros(T, N, env.n_planes, 9, 9)
         b_masks = torch.zeros(T, N, PASS + 1, dtype=torch.bool)
         b_actions = torch.zeros(T, N, dtype=torch.int64)
         b_logps = torch.zeros(T, N)
@@ -748,12 +790,15 @@ def main():
         # ---- eval ------------------------------------------------------------
         eval_str = ""
         if args.eval_every and ppo_iter % args.eval_every == 0:
-            wr_rand = evaluate(policy, random_opponent, args.eval_games, device)
+            wr_rand = evaluate(policy, random_opponent, args.eval_games, device,
+                               tactical=args.tactical)
             wr_greedy = evaluate(policy, greedy_capture_opponent,
-                                 args.eval_games, device)
+                                 args.eval_games, device,
+                                 tactical=args.tactical)
             wr_snap = evaluate(policy, make_snapshot_opponent(snapshot, device,
                                                              greedy=True),
-                               args.eval_games, device)
+                               args.eval_games, device,
+                               tactical=args.tactical)
             eval_str = (f" eval_vs_random={wr_rand:.2f}"
                         f" eval_vs_greedy={wr_greedy:.2f}"
                         f" eval_vs_snapshot={wr_snap:.2f}")
@@ -770,8 +815,12 @@ def main():
               step, ppo_iter, snap_ptr, hparams)
     final_bin = os.path.join(args.out, "autodidact-final.bin")
     # export the locked trunk only: the fp16 format (and the Rust/WASM demo
-    # path) never sees the training-only aux heads.
-    export_weights(policy.trunk.cpu(), final_bin)
+    # path) never sees the training-only aux heads. Tactical runs export the
+    # 13-channel net in the tactical layout (demo path pending phase 2).
+    if args.tactical:
+        export_weights_tactical(policy.cpu(), final_bin)
+    else:
+        export_weights(policy.trunk.cpu(), final_bin)
     log(f"done at step {step}; fp16 export -> {final_bin} "
         f"({os.path.getsize(final_bin)} bytes)")
     logf.close()
