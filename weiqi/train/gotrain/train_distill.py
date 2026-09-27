@@ -44,9 +44,12 @@ def load_dataset(path):
     # Support both formats: new (obs/policy/value/mask) and legacy
     # distill dataset (planes/teacher/masks, no value)
     if "planes" in d.files:
+        # Legacy: teacher = raw KataGo logits, need softmax
+        teacher_logits = torch.from_numpy(d["teacher"])
+        teacher_probs = torch.softmax(teacher_logits, dim=1)
         out = {
             "obs": torch.from_numpy(d["planes"]),
-            "policy": torch.from_numpy(d["teacher"]),
+            "policy": teacher_probs,
             "mask": torch.from_numpy(d["masks"]),
             "value": None,  # legacy dataset has no value targets
         }
