@@ -553,3 +553,48 @@ class TestPositionArchive(unittest.TestCase):
         # The 3 newest should have plies 2, 3, 4
         plies = sorted(p[2] for p in archive._positions)
         self.assertEqual(plies, [2, 3, 4])
+
+class TestWideArchitectures(unittest.TestCase):
+    def test_wide_param_count(self):
+        """GoNetWide has ~466K params (3.6x baseline)."""
+        from gotrain.net_wide import GoNetWide
+        net = GoNetWide()
+        self.assertGreater(net.param_count(), 400000)
+        self.assertLess(net.param_count(), 500000)
+
+    def test_pool_param_count(self):
+        """GoNetPool adds minimal params over baseline."""
+        from gotrain.net_wide import GoNetPool
+        from gotrain.net import GoNet
+        pool = GoNetPool()
+        base = GoNet()
+        # Global path should add <15K params
+        self.assertLess(pool.param_count() - base.param_count(), 15000)
+
+    def test_wide_forward(self):
+        """All variants produce correct output shapes."""
+        from gotrain.net_wide import GoNetWide, GoNetPool, GoNetWidePool
+        x = torch.randn(2, 6, 9, 9)
+        for net in [GoNetWide(), GoNetPool(), GoNetWidePool()]:
+            logits, value = net(x)
+            self.assertEqual(tuple(logits.shape), (2, 82))
+            self.assertEqual(tuple(value.shape), (2,))
+            # Value in [-1, 1] (tanh)
+            self.assertTrue(((value >= -1) & (value <= 1)).all())
+
+    def test_pool_global_path(self):
+        """Global pooling path actually affects output (not a no-op)."""
+        from gotrain.net_wide import GoNetPool
+        net = GoNetPool()
+        net.eval()
+        x = torch.randn(1, 6, 9, 9)
+        with torch.no_grad():
+            out1 = net(x)[0]
+            # Zero out the global path and check output changes
+            orig = net.global_fc.weight.data.clone()
+            net.global_fc.weight.data.zero_()
+            net.global_fc.bias.data.zero_()
+            out2 = net(x)[0]
+            net.global_fc.weight.data.copy_(orig)
+        # Outputs should differ (global path contributes)
+        self.assertFalse(torch.allclose(out1, out2))
