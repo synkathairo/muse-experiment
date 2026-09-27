@@ -213,6 +213,53 @@ def observe_tactical(board, color):
 
 
 # ---------------------------------------------------------------------------
+# Position archive for restarted self-play (Astra/Sol recommendation 2026-09-27)
+# ---------------------------------------------------------------------------
+class PositionArchive:
+    """Rolling buffer of midgame board positions for restarted self-play.
+
+    The agent rarely trains on meaningful midgame/endgame states because every
+    episode starts from move zero. By restarting some episodes from archived
+    midgame positions, the policy and value heads get dense training on the
+    positions where games are actually decided.
+
+    Each entry stores a deep-copied Board plus the env metadata needed to
+    resume (learner_color, plies, consec_passes). Restoration preserves the
+    env invariant that observations are always the learner's turn.
+    """
+
+    def __init__(self, max_size=10000):
+        self.max_size = max_size
+        self._positions = []  # list of (board, learner_color, plies, consec_passes)
+        self._rng = np.random.default_rng()
+
+    def __len__(self):
+        return len(self._positions)
+
+    def add(self, board, learner_color, plies, consec_passes):
+        """Archive a position. Drops oldest if at capacity (FIFO)."""
+        import copy
+        if len(self._positions) >= self.max_size:
+            self._positions.pop(0)
+        self._positions.append((
+            copy.deepcopy(board),
+            int(learner_color),
+            int(plies),
+            int(consec_passes),
+        ))
+
+    def sample(self):
+        """Return a random archived position, or None if empty."""
+        if not self._positions:
+            return None
+        idx = self._rng.integers(len(self._positions))
+        board, learner_color, plies, consec_passes = self._positions[idx]
+        import copy
+        # Deepcopy on sample too: the env will mutate the board.
+        return (copy.deepcopy(board), learner_color, plies, consec_passes)
+
+
+# ---------------------------------------------------------------------------
 # Vectorized self-play environment
 # ---------------------------------------------------------------------------
 class SelfPlayGo:
@@ -273,6 +320,33 @@ class SelfPlayGo:
         for i in idxs:
             self._new_game(int(i))
         return self._observe_learner(idxs)
+
+    def reset_from_archive(self, idxs, archive):
+        """Reset envs from archived midgame positions where available.
+
+        For each idx, with probability handled by the caller, restores a random
+        archived position. Falls back to a new game if the archive is empty.
+        Returns (obs, restored_mask): obs for idxs, and a bool array indicating
+        which envs were restored from the archive vs started fresh.
+        """
+        idxs = np.asarray(idxs)
+        restored = np.zeros(len(idxs), dtype=bool)
+        for k, i in enumerate(idxs):
+            i = int(i)
+            pos = archive.sample()
+            if pos is not None:
+                board, learner_color, plies, consec_passes = pos
+                self.boards[i] = board
+                self.learner_color[i] = learner_color
+                # Do NOT increment color_counter: the archived game had a fixed
+                # learner color; alternation resumes on the next full reset.
+                self.plies[i] = plies
+                self.consec_passes[i] = consec_passes
+                self.done[i] = False
+                restored[k] = True
+            else:
+                self._new_game(i)
+        return self._observe_learner(idxs), restored
 
     # -- internal move plumbing ----------------------------------------------
     def _encode(self, board, color):

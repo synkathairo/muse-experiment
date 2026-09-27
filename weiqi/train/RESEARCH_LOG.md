@@ -289,3 +289,20 @@ Bugs caught during implementation:
 2. Inserted helpers stole `@torch.no_grad()` from `sample_actions` (decorator ended up on wrong function). Restored.
 
 Tests: 75 passed. Smoke training run (256 steps) completes. This is ~8x free data; should have been there from the start.
+
+### Position archive for restarted self-play (2026-09-27) — IMPLEMENTED
+
+Astra's top bet, Sol's #1. The agent rarely trains on midgame/endgame because every episode starts from move zero.
+
+Implementation (`gotrain/selfplay.py`, `gotrain/train_selfplay.py`):
+- `PositionArchive`: FIFO rolling buffer (default 10K) of deep-copied Boards + env metadata (learner_color, plies, consec_passes).
+- During rollout: each live env archives its position with prob `--archive-prob` (default 0.02) per step. Board is at learner's turn (post-step invariant), so restoration is clean.
+- On env done: with prob `--archive-restart-prob` (default 0.0 = disabled), restarts from a random archived position via `SelfPlayGo.reset_from_archive()` instead of a fresh game. Falls back to fresh if archive empty.
+- `color_counter` NOT incremented on archive restore (the archived game had a fixed learner color; alternation resumes on next full reset).
+- Superko history preserved via deepcopy.
+
+CLI: `--archive-restart-prob 0.5 --archive-size 10000 --archive-prob 0.02`
+
+Tests: 3 new (roundtrip, empty fallback, FIFO), 78 total pass. Smoke training with archive enabled completes at full throughput.
+
+Kill test (per Astra): 1-2M steps, 200-game eval. Kill if no improvement in win rate AND critic calibration vs baseline.

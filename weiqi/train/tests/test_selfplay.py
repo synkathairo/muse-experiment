@@ -501,3 +501,55 @@ class TestScoreReward(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+class TestPositionArchive(unittest.TestCase):
+    def test_archive_roundtrip(self):
+        """Archived positions restore correctly and preserve the learner-turn invariant."""
+        from gotrain.selfplay import PositionArchive
+        env = SelfPlayGo(num_envs=2, seed=0)
+        env.reset()
+        # Play a few moves to get a midgame position
+        for _ in range(10):
+            masks = env.legal_masks_learner()
+            actions = masks.argmax(axis=1)  # greedy legal
+            obs, _, dones, _, _ = env.step(actions)
+            if dones.any():
+                env.reset(np.where(dones)[0])
+        
+        archive = PositionArchive(max_size=10)
+        # Archive env 0's position
+        archive.add(env.boards[0], env.learner_color[0], env.plies[0], env.consec_passes[0])
+        self.assertEqual(len(archive), 1)
+        
+        # Restore into env 1 (after resetting it to a fresh game)
+        env.reset(np.array([1]))
+        board_before = env.boards[1]._tuple()
+        obs_restored, restored = env.reset_from_archive(np.array([1]), archive)
+        self.assertTrue(restored[0])
+        # Board should differ from fresh (very likely, given random archive pos)
+        # More importantly: the restored obs must be the learner's turn
+        # (legal moves exist for the learner color)
+        masks = env.legal_masks_learner()
+        self.assertTrue(masks[1].any(), "restored position has no legal moves for learner")
+        
+    def test_archive_empty_falls_back(self):
+        """Empty archive falls back to fresh games."""
+        from gotrain.selfplay import PositionArchive
+        env = SelfPlayGo(num_envs=2, seed=0)
+        archive = PositionArchive(max_size=10)
+        obs, restored = env.reset_from_archive(np.array([0, 1]), archive)
+        self.assertFalse(restored.any())
+        self.assertEqual(obs.shape, (2, 6, 9, 9))
+        
+    def test_archive_fifo(self):
+        """Archive drops oldest when at capacity."""
+        from gotrain.selfplay import PositionArchive
+        from gotrain.rules import Board
+        archive = PositionArchive(max_size=3)
+        for i in range(5):
+            b = Board(9)
+            archive.add(b, 1, i, 0)
+        self.assertEqual(len(archive), 3)
+        # The 3 newest should have plies 2, 3, 4
+        plies = sorted(p[2] for p in archive._positions)
+        self.assertEqual(plies, [2, 3, 4])

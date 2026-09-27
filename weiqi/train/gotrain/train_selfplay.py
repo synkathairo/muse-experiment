@@ -53,7 +53,7 @@ from .net_aux import (GoNetAux, load_trunk_from_gonet, check_trunk_resume,
                       to_gonet_state_dict)
 from .ppo import PPOConfig, compute_gae, ppo_update, explained_variance
 from .selfplay import (SelfPlayGo, PASS, set_komi, ownership_labels,
-                       margin_label, to_learner_perspective)
+                       margin_label, to_learner_perspective, PositionArchive)
 
 # Frozen museum snapshots, log-spaced in env steps (cf. train_cloning.SNAP_STEPS,
 # which is in gradient steps — here the natural unit is env steps / PPO samples).
@@ -575,6 +575,15 @@ def main():
                          "a balanced win rate; eval/benchmark komi is separate. "
                          "Explicitly passed value wins on --resume.")
     ap.add_argument("--seed", type=int, default=7)
+    ap.add_argument("--archive-restart-prob", type=float, default=0.0,
+                    help="fraction of resets that restart from an archived midgame "
+                         "position instead of a new game (0=disabled). Astra/Sol "
+                         "recommendation: 0.5 for the kill test.")
+    ap.add_argument("--archive-size", type=int, default=10000,
+                    help="max archived positions (FIFO)")
+    ap.add_argument("--archive-prob", type=float, default=0.02,
+                    help="per-env per-step probability of archiving the current "
+                         "position during rollout")
     ap.add_argument("--reward-mode", default="winloss", choices=["winloss", "score"],
                     help="terminal reward: +/-1 win/loss or tanh(score_margin/--reward-scale) "
                          "from the learner's perspective (KataGo-style graded signal)")
@@ -697,6 +706,13 @@ def main():
                          dirichlet_eps=args.dirichlet_eps))
     obs = env.reset()  # (N,6,9,9) float32, learner to move
 
+    # Position archive for restarted self-play (0.0 = disabled).
+    archive = PositionArchive(max_size=args.archive_size)
+    archive_rng = np.random.default_rng(args.seed + 999)
+    if args.archive_restart_prob > 0:
+        log(f"position archive: size={args.archive_size} "
+            f"restart_prob={args.archive_restart_prob} archive_prob={args.archive_prob}")
+
     T, N = args.rollout_steps, args.num_envs
     # Annealing schedule anchored to the ORIGINAL run length, so it stays
     # consistent across resumes instead of being recomputed from remaining steps
@@ -790,8 +806,31 @@ def main():
                 last_obs, last_terms = obs.copy(), terms.copy()
                 last_truncs = (dones & ~terms).copy()
             if np.any(dones):
-                fresh = env.reset(np.where(dones)[0])
-                obs[dones] = fresh
+                done_idxs = np.where(dones)[0]
+                if args.archive_restart_prob > 0 and len(archive) > 0:
+                    # Split: some restart from archive, rest start fresh.
+                    # (Archive empty at the start -> all fresh until it fills.)
+                    n_restart = int(round(len(done_idxs) * args.archive_restart_prob))
+                    # Random subset for archive restart (not just the first n).
+                    perm = archive_rng.permutation(len(done_idxs))
+                    restart_idxs = done_idxs[perm[:n_restart]]
+                    fresh_idxs = done_idxs[perm[n_restart:]]
+                    if len(restart_idxs) > 0:
+                        fresh_restart, _ = env.reset_from_archive(restart_idxs, archive)
+                        obs[restart_idxs] = fresh_restart
+                    if len(fresh_idxs) > 0:
+                        obs[fresh_idxs] = env.reset(fresh_idxs)
+                else:
+                    fresh = env.reset(done_idxs)
+                    obs[dones] = fresh
+
+            # Archive midgame positions for future restarts (after step, before
+            # next iteration: board is at learner's turn, invariant holds).
+            if args.archive_restart_prob > 0:
+                for i in range(N):
+                    if not dones[i] and archive_rng.random() < args.archive_prob:
+                        archive.add(env.boards[i], env.learner_color[i],
+                                    env.plies[i], env.consec_passes[i])
 
         # value bootstrap: V(final position) for live envs; 0 for true
         # terminals (two passes) and scored max-ply endings -- both are
