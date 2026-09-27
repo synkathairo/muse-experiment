@@ -306,3 +306,20 @@ CLI: `--archive-restart-prob 0.5 --archive-size 10000 --archive-prob 0.02`
 Tests: 3 new (roundtrip, empty fallback, FIFO), 78 total pass. Smoke training with archive enabled completes at full throughput.
 
 Kill test (per Astra): 1-2M steps, 200-game eval. Kill if no improvement in win rate AND critic calibration vs baseline.
+
+### Position archive kill test (2026-09-27) — FAILED, SHELVED
+
+**Design:** 1M steps from the symmetry checkpoint (16.0M → 17.0M), 50% of resets from a 10K rolling archive of midgame positions, 50% fresh. Astra/Sol's #1 recommendation.
+
+**Eval protocol (new):** 1024 games vs GNU Go (levels 1/3/5/8, 256 per level), temperature 0.2, `--jobs 8`. Fixed the old ladder's determinism problem (greedy play = only 16 unique games out of 32).
+
+**Results:**
+- Symmetry baseline: 219-805 (21.4%)
+- Archive: 193-831 (18.8%)
+- Two-proportion z-test: p≈0.14 (not significant, but wrong direction)
+
+**Verdict:** No improvement. Per the kill criterion, shelved.
+
+**Hypothesis for failure:** The archive saves positions from the current weak policy's games (21% vs GNU Go). These aren't "meaningful midgame positions" — they're bad positions from bad games. Chicken-and-egg: you need a decent policy to generate useful archive positions, but you need useful positions to train a decent policy.
+
+**Also learned:** The old 32-game greedy ladder was deterministic (16 effective games). All historical ladder numbers are noisier than quoted. New protocol: temperature 0.2, 256+ games, `--jobs 8` max during training.
