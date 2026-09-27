@@ -25,7 +25,7 @@ import numpy as np
 import torch
 
 from .net import GoNet, EXPORT_ORDER, ordered_tensors
-from .net import EXPORT_ORDER_TACTICAL, ordered_tensors_tactical
+from .net import ordered_tensors_tactical
 from .net_aux import to_gonet_state_dict
 
 

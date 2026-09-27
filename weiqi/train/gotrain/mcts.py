@@ -108,7 +108,7 @@ class Searcher:
                     break
             if leaves:
                 values = self._evaluate([n for n, _ in leaves])
-                for (node, path), v in zip(leaves, values):
+                for (node, path), v in zip(leaves, values, strict=True):
                     self._backup(nodes, path, v)
                     sims += 1
         return self._choose_move(root)
@@ -162,7 +162,7 @@ class Searcher:
         logits = logits.float().cpu().numpy()
         values = values.float().cpu().numpy().ravel()
         out = []
-        for node, lg, v in zip(leaves, logits, values):
+        for node, lg, v in zip(leaves, logits, values, strict=True):
             node.legal = selfplay.legal_mask(node.board, node.to_move)
             l = lg[node.legal]
             l = l - l.max()

@@ -48,9 +48,8 @@ import torch
 import torch.nn.functional as F
 
 from .export import export_weights, export_weights_tactical
-from .net import GoNet, N_POINTS
-from .net_aux import (GoNetAux, load_trunk_from_gonet, check_trunk_resume,
-                      to_gonet_state_dict)
+from .net import N_POINTS
+from .net_aux import (GoNetAux, load_trunk_from_gonet, check_trunk_resume)
 from .ppo import PPOConfig, compute_gae, ppo_update, explained_variance
 from .selfplay import (SelfPlayGo, PASS, set_komi, ownership_labels,
                        margin_label, to_learner_perspective, PositionArchive)
@@ -848,7 +847,8 @@ def main():
         ev = explained_variance(b_values.numpy(), returns.numpy())
 
         # ---- PPO update ----------------------------------------------------
-        flat = lambda x: x.reshape(T * N, *x.shape[2:])
+        def flat(x):
+            return x.reshape(T * N, *x.shape[2:])
         # Clamp at 0: on a resumed run ppo_iter can reach total_iters, and a
         # negative LR is gradient ASCENT -- it destroys the policy in one step.
         lr_now = cfg.lr * max(0.0, 1.0 - ppo_iter / total_iters) if cfg.anneal_lr else cfg.lr

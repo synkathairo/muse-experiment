@@ -25,7 +25,6 @@ import sys
 import numpy as np
 import torch
 
-from . import rules
 from .rules import Board, EMPTY, BLACK, WHITE, opponent
 from .selfplay import legal_mask, observe
 from . import tactical as tacmod
