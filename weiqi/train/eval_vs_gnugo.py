@@ -27,8 +27,12 @@ class GTPClient:
         self.proc = subprocess.Popen(
             argv, stdin=subprocess.PIPE, stdout=subprocess.PIPE,
             stderr=subprocess.DEVNULL, text=True, bufsize=1)
+        assert self.proc.stdin is not None
+        assert self.proc.stdout is not None
 
     def command(self, cmd, timeout=180):
+        assert self.proc.stdin is not None
+        assert self.proc.stdout is not None
         self.proc.stdin.write(cmd + "\n")
         self.proc.stdin.flush()
         lines, data = [], []

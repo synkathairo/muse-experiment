@@ -114,6 +114,7 @@ class TestMaskedLogpsEntropy(unittest.TestCase):
         loss = -(logps * adv).mean() - 0.03 * entropy.mean()
         loss.backward()
         g = logits.grad
+        assert g is not None
         self.assertTrue((g[~masks] == 0.0).all(),
                         "illegal logits must receive exactly zero gradient")
         self.assertTrue((g[masks].abs() > 0).any(),
@@ -172,11 +173,11 @@ class TestMaskedSampling(unittest.TestCase):
                 illegal = int(np.flatnonzero(~masks.numpy()[b])[0])
                 l[b, illegal] = 1e6
             return l, v
-        net.forward = patched
+        net.forward = patched  # type: ignore
         try:
             a = greedy_actions(net, obs, masks).numpy()
         finally:
-            net.forward = orig_forward
+            net.forward = orig_forward  # type: ignore
         m = masks.numpy()
         self.assertTrue(all(m[b, a[b]] for b in range(B)),
                         "greedy argmax must be legal even when raw argmax is not")

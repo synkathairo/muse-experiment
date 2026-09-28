@@ -43,7 +43,7 @@ class PPOConfig:
     minibatch_size: int = 256
     norm_adv: bool = True        # standardize advantages over the rollout batch
     clip_vloss: bool = True      # clip value loss like the policy loss
-    target_kl: float = None      # if set, stop epochs early when approx KL exceeds this
+    target_kl: float | None = None  # if set, stop epochs early when approx KL exceeds this
 
 
 def compute_gae(rewards, values, terms, truncs, next_value, next_term,

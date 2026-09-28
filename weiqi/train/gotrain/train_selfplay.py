@@ -682,7 +682,7 @@ def main():
             f"(GoNetTactical, experimental 13-plane input)")
     else:
         log(f"device={device} params={policy.param_count()} "
-            f"(trunk {policy.trunk.param_count()}, locked GoNet spec)")
+            f"(trunk {policy.trunk.param_count()}, locked GoNet spec)")  # type: ignore
     log(f"ownership_aux={args.ownership} aux_own_w={args.aux_own_w} "
         f"aux_margin_w={args.aux_margin_w} aux_epochs={args.aux_epochs}")
 

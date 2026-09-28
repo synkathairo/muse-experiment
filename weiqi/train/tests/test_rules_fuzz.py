@@ -190,6 +190,7 @@ class TestRulesFuzz(unittest.TestCase):
                 if is_pass:
                     self.assertTrue(pyb.play(None, color))
                 else:
+                    assert isinstance(mv, int)
                     self.assertTrue(pyb.play((mv // 9, mv % 9), color))
                 self.assertTrue(line.startswith("ok"),
                                 f"{name} move {mv}: {line}")
