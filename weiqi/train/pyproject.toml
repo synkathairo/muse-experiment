@@ -12,6 +12,11 @@ dependencies = [
     "numpy==2.5.2",
 ]
 
+[dependency-groups]
+dev = [
+    "pytest>=8",
+]
+
 # PyPI's Linux torch wheels bundle CUDA (~2.5GB) even on CPU-only boxes.
 # Route Linux to PyTorch's CPU-only index; macOS keeps the PyPI wheel
 # (MPS included, ~200MB). explicit=true so only torch uses this index.
