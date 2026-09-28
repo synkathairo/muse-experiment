@@ -202,7 +202,8 @@ def main():
               f"{m['top1']:>7.3f}")
 
     # Save results
-    import json, os
+    import json
+    import os
     os.makedirs(args.out, exist_ok=True)
     with open(os.path.join(args.out, "results.json"), "w") as f:
         json.dump(results, f, indent=2)
