@@ -15,6 +15,7 @@ dependencies = [
 [dependency-groups]
 dev = [
     "pytest>=8",
+    "ruff>=0.16",
 ]
 
 # PyPI's Linux torch wheels bundle CUDA (~2.5GB) even on CPU-only boxes.
