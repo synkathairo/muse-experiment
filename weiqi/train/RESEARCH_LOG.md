@@ -323,3 +323,50 @@ Kill test (per Astra): 1-2M steps, 200-game eval. Kill if no improvement in win 
 **Hypothesis for failure:** The archive saves positions from the current weak policy's games (21% vs GNU Go). These aren't "meaningful midgame positions" — they're bad positions from bad games. Chicken-and-egg: you need a decent policy to generate useful archive positions, but you need useful positions to train a decent policy.
 
 **Also learned:** The old 32-game greedy ladder was deterministic (16 effective games). All historical ladder numbers are noisier than quoted. New protocol: temperature 0.2, 256+ games, `--jobs 8` max during training.
+
+### 2x2 architecture diagnostic: capacity vs global routing (2026-09-27) — MIXED/NULL
+
+**Motivation:** Astra's primary hypothesis (capacity) + secondary (global info flow). Sol's recommended decision experiment: 64 vs 128 channels × pooling off/on, fixed teacher dataset.
+
+**Architectures** (depth held at 4 layers to avoid confounding):
+- `GoNet` (baseline): 130,522 params
+- `GoNetWide`: 64→128 channels, 466,202 params
+- `GoNetPool`: + GAP→FC→broadcast→concat global path, 138,810 params
+- `GoNetWidePool`: both, 490,938 params
+
+Code: `gotrain/net_wide.py`. Commits `a90356d` (archs + distill trainer), plus fixes.
+
+**Experiment 1 — KataGo distillation (2,025 positions):**
+Positions from plain-PPO 3M self-play (weak), labeled with KataGo b40 policy via `query_teacher.py`. Note: teacher outputs were raw logits, not probabilities — softmax applied on load (bug caught mid-run). 30 epochs, policy-only (no value targets in legacy dataset).
+- baseline: 36.1% top-1 | wide: 33.7% | pool: 35.1% | widepool: 41.1%
+- Pattern: neither alone helps, both together +5pp. But n=202 val (±3.4%), ~1σ — not significant. Positions from weak play, split by position not game.
+
+**Experiment 2 — Supervised on Go Quest human games (273K positions):**
+Go Quest 9x9 archive: 8,607 games, strong players (ratings 1800-2500). 5,815 games kept (2,791 dropped: too short/timeouts/bots), 273,103 train / 5,269 val positions. 5 epochs, predict human's next move. Code: `gotrain/train_supervised_2x2.py`.
+- baseline: 43.03% | wide: 44.41% | pool: 42.57% | widepool: 44.62%
+- Pattern: width helps +1.4pp (~2σ, marginal), pooling does nothing (-0.4pp), widepool ≈ wide alone.
+
+**Verdict:** No dramatic capacity bottleneck. 3.5x params → +1.4% move prediction. Pooling is null. The 130K net isn't dramatically underpowered for 9x9 imitation; the weakness is elsewhere.
+
+**Caveats (Sol's peer review):**
+- Heads already flatten the full 9x9 board → FC layers already have global access. The pooling test was less decisive than intended.
+- Top-1 imitation can miss rare decisive tactical errors; doesn't directly measure playing strength.
+- 32-game ladders have ±14pp 95% CI at 20% win rate — screening only.
+
+**Citation:** Go Quest 9x9 game records (Tanasa / Go Quest app, wars.fm/go9), shared by Hiroshi Yamashita to the computer-go mailing list, Dec 28, 2015.
+
+### Sol peer review — literature and mechanistic hypotheses (2026-09-27)
+
+Sol (gpt-6-sol) reviewed the 2x2 results with code inspection (`-C` flag).
+
+**On PPO's struggles (mechanistic hypothesis, not published):** PPO learns from sampled moves + delayed terminal reward; the critic must do long-horizon credit assignment while the self-play opponent changes. No search-improved move targets (unlike AlphaZero/KataGo). This is a hypothesis about our setup, not a claim that PPO can't learn 9x9.
+
+**Literature:**
+- AlphaGo (Silver et al. 2016): supervised pretraining on human games → self-play. Our warm-start plan follows this.
+- AlphaGo Zero (Silver et al. 2017): pure self-play works but with MCTS + far more compute — not directly transferable to our PPO setup.
+- Go-Exploit (arXiv:2302.12359): starting self-play from archived positions improved value learning/sample efficiency in an AlphaZero 9x9 setting. Relevant to our shelved archive experiment — the treatment-rate audit (actual restart % unverified) should be resolved before fully closing that direction.
+- KataGo (Wu 2019): global pooling results shouldn't be expected to transfer to our flattened-head PPO net.
+
+**Recommended next step:** Supervised warm-start. Train `train_cloning.py` on the 273K Go Quest positions, use checkpoint to init PPO with fresh optimizer. Check supervised model's GNU Go strength before PPO. Compare matched PPO budgets vs scratch. Track value error + tactical blunders, not just wins.
+
+**If warm-start fails:** Inspect value calibration and errors by game phase before another width experiment.
