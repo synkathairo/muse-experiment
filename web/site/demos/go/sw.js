@@ -17,6 +17,8 @@ const PRECACHE = [
   './weights/selfplay-clean-300k.bin',
   './weights/selfplay-clean-1M.bin',
   './weights/selfplay-clean-3M.bin',
+  './weights/supervised-final.bin',
+  './weights/supervised-ppo-final.bin',
 ];
 
 self.addEventListener('install', event => {

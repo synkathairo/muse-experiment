@@ -145,12 +145,12 @@
 	dead groups before the final passes. Two deliberate deviations from pure
 	Tromp–Taylor: suicide is banned outright (pure TT lets it self-clear) and
 	komi is selectable per game (pure TT leaves it to player agreement).</p>
-	<p><strong>Honest caveats.</strong> These checkpoints are from a 3M-step
-	self-play run on Apple Silicon (M1/MPS). At 3M the net scores 10–22 against
-	GNU Go levels 1–10, but the strength is lopsided: 8–8 as White, 2–14 as
-	Black. Opening play going first is the known weakness; more steps alone
-	don't fix it. They exist so you can watch learning happen, and the numbers
-	above are the measured reality, not a strength claim.</p>
+	<p><strong>Honest caveats.</strong> The self-play checkpoints are from a 15.5M-step
+	PPO run (7–25 vs GNU Go levels 1–10, greedy play). The supervised timeline is
+	stronger: behavioral cloning on 273k human 9x9 positions scores 74–182 (28.9%),
+	and 3M steps of PPO fine-tuning on top reaches 114–142 (44.5%) — the default
+	model. Still well below human club strength; the numbers are the measured
+	reality, not a strength claim.</p>
 	<p>How the training works is written up in
 	<a href="https://github.com/synkathairo/muse-experiment/blob/main/weiqi/theory.md">weiqi/theory.md</a>
 	— search-free PPO self-play, a different beast from AlphaZero's MCTS. The
@@ -168,7 +168,7 @@
 	const canvas = $('board'), ctx = canvas.getContext('2d');
 	const N = 9;
 
-	let manifest = null, botId = 'selfplay', stopIdx = 0;
+	let manifest = null, botId = 'supervised', stopIdx = 1;
 	let netCache = new Map(), net = null, netLoading = null;
 	let game = null, mode = 'human-bot', humanColor = 0;
 	let temperature = 0.3, showHeat = true, botTimer = null, paused = false;
