@@ -524,7 +524,7 @@
 			const s = manifest.bots[id].stops;
 			if (s.length) loadNet(id, s.length - 1).catch(() => {});
 		}
-		await selectBot('selfplay');
+		await selectBot('supervised');
 	})();
 </script>
 <script>
