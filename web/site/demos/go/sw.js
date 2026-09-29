@@ -5,7 +5,7 @@
  * demo works offline after the first visit. No UI for this — it simply kicks
  * in when the network is gone. */
 
-const CACHE_NAME = 'weiqi-go-v5';
+const CACHE_NAME = 'weiqi-go-v6';
 
 const PRECACHE = [
   './',
@@ -19,6 +19,7 @@ const PRECACHE = [
   './weights/selfplay-clean-3M.bin',
   './weights/supervised-final.bin',
   './weights/supervised-ppo-final.bin',
+  './weights/supervised-ppo-6M.bin',
 ];
 
 self.addEventListener('install', event => {
