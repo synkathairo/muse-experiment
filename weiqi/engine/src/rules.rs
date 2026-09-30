@@ -220,6 +220,24 @@ impl Game {
         self.komi = komi;
     }
 
+    /// Place setup stones directly (e.g. handicaps), bypassing alternating
+    /// play. Points must be in range and empty; anything else is ignored.
+    /// The resulting position is recorded for positional superko, `ko` and
+    /// `last_move` are cleared, and `next_to_move` becomes the side to move.
+    /// Intended for a fresh game before any move is played.
+    pub fn place_setup_stones(&mut self, points: &[u8], color: Color, next_to_move: Color) {
+        for &p in points {
+            let i = p as usize;
+            if i < N_POINTS && self.board[i].is_none() {
+                self.board[i] = Some(color);
+            }
+        }
+        self.seen.insert(board_hash(&self.board));
+        self.ko = None;
+        self.last_move = None;
+        self.to_move = next_to_move;
+    }
+
     /// Side to move.
     pub fn to_move(&self) -> Color {
         self.to_move
@@ -749,6 +767,31 @@ mod tests {
         assert_eq!(s65.winner(), Color::White); // komi still decides here
         // legality is untouched by komi
         assert!(g.play(Move::Play(40)).is_ok());
+    }
+
+    #[test]
+    fn place_setup_stones_handicap() {
+        let mut g = Game::new();
+        // 3-stone handicap: 3-3, 7-7, 7-3 in 0-indexed (row, col).
+        g.place_setup_stones(&[2 * 9 + 2, 6 * 9 + 6, 6 * 9 + 2], Color::Black, Color::White);
+        assert_eq!(g.stone_at(2 * 9 + 2), Some(Color::Black));
+        assert_eq!(g.stone_at(6 * 9 + 6), Some(Color::Black));
+        assert_eq!(g.stone_at(6 * 9 + 2), Some(Color::Black));
+        assert_eq!(g.stone_at(4 * 9 + 4), None);
+        assert_eq!(g.to_move(), Color::White); // White moves first in handicap games
+        assert_eq!(g.last_move(), None);
+        // Out-of-range and occupied points are ignored, not fatal.
+        g.place_setup_stones(&[200, 2 * 9 + 2], Color::White, Color::Black);
+        assert_eq!(g.stone_at(2 * 9 + 2), Some(Color::Black));
+        // Play continues normally from the setup position.
+        assert!(g.play(Move::Play(4 * 9 + 4)).is_ok());
+        assert_eq!(g.stone_at(4 * 9 + 4), Some(Color::Black));
+        // The setup hash is recorded in `seen` via the same insert path as
+        // play(), so the handicap layout is superko-banned like any position.
+        let mut h = Game::new();
+        h.place_setup_stones(&[40], Color::Black, Color::White);
+        assert!(h.play(Move::Play(0)).is_ok());
+        assert_eq!(h.stone_at(0), Some(Color::White));
     }
 
     #[test]

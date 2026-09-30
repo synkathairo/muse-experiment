@@ -109,6 +109,7 @@
 		<div class="row">
 			<label for="komi">Komi</label>
 			<select id="komi">
+				<option value="0.5">0.5</option>
 				<option value="5.5">5.5</option>
 				<option value="6.5" selected>6.5</option>
 				<option value="7.5">7.5</option>
@@ -116,6 +117,20 @@
 		</div>
 		<p class="hint">The bot plays the same moves whatever the komi — only the
 		scoring changes. Applies to new games.</p>
+
+		<div class="row">
+			<label for="handicap">Handicap</label>
+			<select id="handicap">
+				<option value="0" selected>none</option>
+				<option value="2">2 stones</option>
+				<option value="3">3 stones</option>
+				<option value="4">4 stones</option>
+				<option value="5">5 stones</option>
+			</select>
+		</div>
+		<p class="hint">Black gets extra stones on the star points and White moves
+		first; komi drops to 0.5 automatically. Applies to new games. Note the net
+		trained on even games, so handicap openings are unfamiliar territory for it.</p>
 
 		<div class="row">
 			<label style="margin:0; font-weight:normal;">
@@ -127,6 +142,10 @@
 			<button id="passBtn">Pass</button>
 			<button id="newBtn">New game</button>
 			<button id="pauseBtn">Pause</button>
+		</div>
+		<div class="row">
+			<button id="undoBtn" title="Take back move (Ctrl+Z)">Undo</button>
+			<button id="redoBtn" title="Replay move (Ctrl+Shift+Z)">Redo</button>
 		</div>
 	</div>
 </div>
@@ -176,6 +195,10 @@
 	let temperature = 0.3, showHeat = true, botTimer = null, paused = false;
 	let komi = 6.5, searchSims = 0;
 	let hover = -1, heatPolicy = null;
+	let handicap = 0; // 0 = even game; 2-5 = black stones on star points
+	// moveHistory: every move played this game in order (0-80 point, 81 pass).
+	// redoStack: moves popped by undo, re-appliable via redo. Both reset on newGame.
+	let moveHistory = [], redoStack = [];
 
 	const statusEl = $('status'), resultEl = $('result');
 
@@ -250,18 +273,87 @@
 
 	/* ---------- game flow ---------- */
 
+	function setupFreshGame() {
+		game = new WasmGame();
+		game.set_komi(komi);
+		// Guarded: a stale cached WASM from before set_handicap existed
+		// shouldn't break the page (same pattern as territory()).
+		if (handicap > 0 && typeof game.set_handicap === 'function') {
+			game.set_handicap(handicap);
+		}
+	}
+
 	function newGame() {
 		if (botTimer) { clearTimeout(botTimer); botTimer = null; }
 		paused = false;
 		$('pauseBtn').textContent = 'Pause';
-		game = new WasmGame();
-		game.set_komi(komi);
+		moveHistory = [];
+		redoStack = [];
+		setupFreshGame();
 		heatPolicy = null;
 		hover = -1;
 		resultEl.textContent = '';
 		render();
 		updateStatus();
 		maybeBotMove();
+	}
+
+	/* ---------- undo / redo ---------- */
+
+	// The WASM engine has no undo primitive, so undo rebuilds the game by
+	// replaying the move list. 9x9 games are short; replay is instant.
+	function recordMove(idx) {
+		moveHistory.push(idx);
+		redoStack = [];
+	}
+
+	function rebuildGame() {
+		if (botTimer) { clearTimeout(botTimer); botTimer = null; }
+		setupFreshGame();
+		for (const m of moveHistory) game.play(m);
+		heatPolicy = null;
+		hover = -1;
+		resultEl.textContent = '';
+		render();
+		updateStatus();
+	}
+
+	function undoCount() {
+		if (!moveHistory.length) return 0;
+		if (mode === 'human-bot' && !game.is_over()) {
+			// Take back the full round: if the bot already replied (human to
+			// move), pop its reply plus the human's move; if the bot hasn't
+			// moved yet, just the human's move.
+			return isBotTurn() ? 1 : Math.min(2, moveHistory.length);
+		}
+		return 1;
+	}
+
+	function undo() {
+		const n = undoCount();
+		if (!n) return;
+		for (let i = 0; i < n; i++) redoStack.push(moveHistory.pop());
+		rebuildGame();
+		maybeBotMove(); // no-op unless it's a bot's turn (e.g. bot-bot mode)
+	}
+
+	function redo() {
+		const n = redoCount();
+		if (!n) return;
+		for (let i = 0; i < n; i++) moveHistory.push(redoStack.pop());
+		rebuildGame();
+		maybeBotMove();
+	}
+
+	// Mirror of undoCount: the redo stack is a sequence of undo groups, and
+	// redo always reverses the most recent group. A size-1 group only ever
+	// sits alone on the stack, so min(2, len) == size of the top group.
+	function redoCount() {
+		if (!redoStack.length) return 0;
+		if (mode === 'human-bot' && game && !game.is_over()) {
+			return Math.min(2, redoStack.length);
+		}
+		return 1;
 	}
 
 	function isBotTurn() {
@@ -295,13 +387,16 @@
 		botTimer = null;
 		if (paused) return;
 		if (!game || game.is_over() || !net) return;
+		let idx;
 		if (searchSims > 0) {
-			game.play(net.search(game, searchSims));
+			idx = net.search(game, searchSims);
 		} else {
 			const policy = net.policy(game);
 			const mask = game.legal_mask();
-			game.play(sampleMove(policy, mask));
+			idx = sampleMove(policy, mask);
 		}
+		game.play(idx);
+		recordMove(idx);
 		heatPolicy = null;
 		render();
 		updateStatus();
@@ -311,6 +406,7 @@
 	function onHumanMove(idx) {
 		if (!game || game.is_over() || isBotTurn()) return;
 		if (!game.play(idx)) { setStatus('illegal move — try another intersection'); return; }
+		recordMove(idx);
 		heatPolicy = null;
 		render();
 		updateStatus();
@@ -324,6 +420,8 @@
 		const botInGame = mode !== 'human-human';
 		$('passBtn').disabled = over || isBotTurn();
 		$('pauseBtn').disabled = over || !botInGame;
+		$('undoBtn').disabled = !game || moveHistory.length === 0;
+		$('redoBtn').disabled = !game || redoStack.length === 0;
 	}
 
 	function updateStatus() {
@@ -332,6 +430,7 @@
 		const toMove = game.to_move() === 0 ? 'Black' : 'White';
 		let s = game.is_over() ? 'game over · '
 			: toMove + ' to move · ';
+		if (handicap > 0) s += 'H' + handicap + ' · ';
 		s += 'captures B ' + game.captures_black() + ' / W ' + game.captures_white();
 		if (net && !game.is_over()) {
 			const v = net.value(game);
@@ -489,8 +588,31 @@
 		komi = +e.target.value;
 		newGame(); // komi applies to new games
 	});
+	$('handicap').addEventListener('change', e => {
+		handicap = +e.target.value;
+		if (handicap > 0) {
+			// Standard: handicap games use 0.5 komi.
+			komi = 0.5;
+			$('komi').value = '0.5';
+		}
+		newGame();
+	});
 	$('passBtn').addEventListener('click', () => onHumanMove(81));
 	$('newBtn').addEventListener('click', newGame);
+	$('undoBtn').addEventListener('click', undo);
+	$('redoBtn').addEventListener('click', redo);
+	document.addEventListener('keydown', e => {
+		if (!e.ctrlKey && !e.metaKey) return;
+		const t = e.target;
+		if (t && (t.tagName === 'INPUT' || t.tagName === 'SELECT' || t.tagName === 'TEXTAREA')) return;
+		if (e.key === 'z' || e.key === 'Z') {
+			e.preventDefault();
+			if (e.shiftKey) redo(); else undo();
+		} else if (e.key === 'y' || e.key === 'Y') {
+			e.preventDefault();
+			redo();
+		}
+	});
 	$('pauseBtn').addEventListener('click', () => {
 		paused = !paused;
 		$('pauseBtn').textContent = paused ? 'Resume' : 'Pause';

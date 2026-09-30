@@ -109,6 +109,20 @@ impl WasmGame {
         self.inner.set_komi(komi);
     }
 
+    /// Place `n` handicap stones (0–5): black stones on the standard 9x9
+    /// star points — 2: 3-3 and 7-7, 3: plus 7-3, 4: plus 3-7, 5: plus
+    /// tengen — with White to move. Call on a fresh game before any move;
+    /// `n = 0` is a no-op. More than 5 is clamped to 5.
+    pub fn set_handicap(&mut self, n: u8) {
+        const STAR: [[u8; 2]; 5] = [[2, 2], [6, 6], [6, 2], [2, 6], [4, 4]];
+        let pts: Vec<u8> = STAR[..(n.min(5) as usize)]
+            .iter()
+            .map(|[r, c]| r * 9 + c)
+            .collect();
+        self.inner
+            .place_setup_stones(&pts, Color::Black, Color::White);
+    }
+
     /// Per-point ownership (81 bytes): 0 = neutral, 1 = black, 2 = white.
     /// Counts agree with the area scores (minus komi). For end-of-game
     /// territory shading.
