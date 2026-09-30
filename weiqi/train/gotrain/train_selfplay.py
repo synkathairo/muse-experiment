@@ -200,6 +200,40 @@ def aux_update(policy, optimizer, cfg, obs, own_tgt, margin_tgt,
             "aux_margin": acc_margin / max(1, n)}
 
 
+def bc_update(policy, optimizer, cfg, demo_x, demo_y, coef, epochs,
+             batch_size):
+    """Behavioral-cloning update on human demonstration positions.
+
+    demo_x: (N,6,9,9) float positions; demo_y: (N,) long move indices.
+    Runs as a separate phase after PPO (IN-RIL style): the clipped trust
+    region never sees the supervised gradients. Each epoch does a fixed
+    number of random minibatches (not a full pass over the demo set).
+    The cross-entropy is scaled by coef. Returns mean BC loss (unscaled,
+    for logging).
+    """
+    policy.train()
+    N = demo_x.shape[0]
+    # Fixed BC steps per epoch: a full 273K-position pass per PPO iter is
+    # 500+ minibatches and 6x slower than PPO itself. 8 batches of 512 is
+    # plenty to keep the imitation signal alive.
+    steps_per_epoch = 8
+    acc = 0.0
+    n = 0
+    for _ in range(epochs):
+        for _ in range(steps_per_epoch):
+            idx = torch.randint(0, N, (batch_size,), device=demo_x.device)
+            logits, _ = policy(demo_x[idx])
+            loss = F.cross_entropy(logits, demo_y[idx])
+            optimizer.zero_grad()
+            (coef * loss).backward()
+            torch.nn.utils.clip_grad_norm_(policy.parameters(),
+                                           cfg.max_grad_norm)
+            optimizer.step()
+            acc += loss.item()
+            n += 1
+    return {"bc_loss": acc / max(1, n)}
+
+
 def random_opponent(obs, masks, game_plies=None):
     """Uniform over legal moves. obs unused; signature matches opponent_fn."""
     B = masks.shape[0]
@@ -560,6 +594,15 @@ def main():
     ap.add_argument("--aux-epochs", type=int, default=2,
                     help="supervised passes over labeled rollout steps per "
                          "PPO iteration")
+    ap.add_argument("--bc-data", default=None,
+                    help="directory with train_x.npy/train_y.npy demo "
+                         "positions for a behavioral-cloning phase")
+    ap.add_argument("--bc-coef", type=float, default=0.0,
+                    help="weight on the BC cross-entropy (0 = disabled)")
+    ap.add_argument("--bc-epochs", type=int, default=1,
+                    help="BC passes over the demo data per PPO iteration")
+    ap.add_argument("--bc-batch-size", type=int, default=512,
+                    help="minibatch size for the BC phase")
     ap.add_argument("--opp-refresh-every", type=int, default=10,
                     help="PPO iterations between opponent snapshot refreshes")
     ap.add_argument("--eval-every", type=int, default=20,
@@ -725,6 +768,17 @@ def main():
     # when --ownership is off (or both weights are 0) skip the bookkeeping.
     aux_on = args.ownership and (args.aux_own_w > 0 or args.aux_margin_w > 0)
 
+    # ---- behavioral-cloning demo data --------------------------------------
+    bc_on = args.bc_data is not None and args.bc_coef > 0
+    demo_x = demo_y = None
+    if bc_on:
+        dx = np.load(os.path.join(args.bc_data, "train_x.npy"))
+        dy = np.load(os.path.join(args.bc_data, "train_y.npy"))
+        demo_x = torch.from_numpy(dx).to(device)
+        demo_y = torch.from_numpy(dy).long().to(device)
+        log(f"bc demo data: {len(demo_x)} positions, coef={args.bc_coef} "
+            f"epochs={args.bc_epochs} batch={args.bc_batch_size}")
+
     while step < args.total_steps:
         # ---- rollout ------------------------------------------------------
         b_obs = torch.zeros(T, N, env.n_planes, 9, 9)
@@ -876,6 +930,17 @@ def main():
                 aux_str = (f" aux_own={aux_stats['aux_own']:.4f}"
                            f" aux_mgn={aux_stats['aux_margin']:.4f}")
 
+        # ---- behavioral-cloning phase --------------------------------------
+        # Separate phase after PPO (IN-RIL style): supervised cross-entropy
+        # on human demo positions, scaled by bc_coef. Keeps the imitation
+        # signal alive during RL instead of using it only as a warm-start.
+        bc_str = ""
+        if bc_on:
+            bc_stats = bc_update(policy, optimizer, cfg, demo_x, demo_y,
+                                 args.bc_coef, args.bc_epochs,
+                                 args.bc_batch_size)
+            bc_str = f" bc={bc_stats['bc_loss']:.4f}"
+
         step += T * N
         ppo_iter += 1
 
@@ -916,7 +981,7 @@ def main():
         log(f"iter {ppo_iter}: step {step} sps={sps:.0f} ep_rew={ep_r} "
             f"ep_len={ep_l} pg={stats['pg_loss']:.4f} v={stats['v_loss']:.4f} "
             f"ent={stats['entropy']:.3f} kl={stats['approx_kl']:.4f} "
-            f"clipfrac={stats['clipfrac']:.3f} ev={ev:.3f}{aux_str}{eval_str}")
+            f"clipfrac={stats['clipfrac']:.3f} ev={ev:.3f}{aux_str}{bc_str}{eval_str}")
 
     save_ckpt(os.path.join(args.out, "latest.pt"), policy, optimizer, snapshot,
               step, ppo_iter, snap_ptr, hparams)

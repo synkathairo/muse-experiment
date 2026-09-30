@@ -148,8 +148,10 @@
 	<p><strong>Honest caveats.</strong> The self-play checkpoints are from a 15.5M-step
 	PPO run (7–25 vs GNU Go levels 1–10, greedy play). The supervised timeline is
 	stronger: behavioral cloning on 273k human 9x9 positions scores 74–182 (28.9%),
-	and 3M steps of PPO fine-tuning on top reaches 114–142 (44.5%); 6M steps
-	reaches 129–127 (50.4%) — the default model. Still well below human club strength; the numbers are the measured
+	and 3M steps of PPO fine-tuning on top reaches 118–138 (46.1%). Plain PPO
+	plateaus: 6M steps reaches 129–127 (50.4%), 9M steps 118–138 (46.1%). Interleaving
+	a behavioral-cloning phase on the human positions during PPO breaks the plateau:
+	156–100 (60.9%) — the default model. Still well below human club strength; the numbers are the measured
 	reality, not a strength claim.</p>
 	<p>How the training works is written up in
 	<a href="https://github.com/synkathairo/muse-experiment/blob/main/weiqi/theory.md">weiqi/theory.md</a>

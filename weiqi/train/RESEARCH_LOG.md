@@ -370,3 +370,30 @@ Sol (gpt-6-sol) reviewed the 2x2 results with code inspection (`-C` flag).
 **Recommended next step:** Supervised warm-start. Train `train_cloning.py` on the 273K Go Quest positions, use checkpoint to init PPO with fresh optimizer. Check supervised model's GNU Go strength before PPO. Compare matched PPO budgets vs scratch. Track value error + tactical blunders, not just wins.
 
 **If warm-start fails:** Inspect value calibration and errors by game phase before another width experiment.
+
+## PPO + behavioral cloning (2026-09-30)
+
+**Question:** does retaining human demonstrations during PPO (interleaved IL+RL) beat plain PPO from the same warm-start checkpoint? The plain-PPO trajectory plateaued: supervised 28.9% → 3M PPO 46.1% → 6M PPO 50.4% → 9M PPO 46.1% (all corrected 256-game GNU Go ladders, temp 0.2).
+
+**Design:** controlled comparison from the same 3M supervised→PPO checkpoint (`runs/ppo_warmstart/snap_003000000.pt`), 3M→6M env steps, matched everything else. Human demos = 273,103 Go Quest 9x9 positions (`data/goquest`). Implementation (`gotrain/train_selfplay.py`, flags `--bc-data/--bc-coef/--bc-epochs/--bc-batch-size`): after each PPO update, a separate supervised cross-entropy phase on demo moves (coef 0.1, batch 512, 1 epoch) — i.e. the clipped trust region never sees the supervised gradients. Related to, but not a replication of, IN-RIL (see literature below); no gradient-separation machinery.
+
+**Methodology incident (matters for interpretation):** the BC phase as first written did `N // batch_size` ≈ 533 random minibatches per PPO iteration — a near-full pass over all 273K demos per iteration, ~6x slower than PPO itself (45 vs 275 sps). At step ~4.1M I fixed it to a fixed 8 minibatches per iteration and restarted from the checkpoint (~230 sps after). So the first ~4.1M env steps got a much heavier BC treatment than the last ~1.9M. The experiment is still PPO+BC vs plain PPO on the same step budget, but the BC intensity is not uniform across the run.
+
+**Interruptions:** process died once (~04:59 EDT, step ~3.19M); watchdog resumed from intact `latest.pt` (~05:21 EDT). Final: step 6,004,736, fp16 export `runs/ppo_bc/autodidact-final.bin` (261KB).
+
+**Benchmark:** 256-game GNU Go ladder, temp 0.2, 64 games each at levels 1/3/5/8 (`eval/ladder_bc.json`), auto-started on completion.
+
+**Result: PPO+BC wins clearly.** Raw 154–102 (60.2%); 2 games where GNU Go resigned/played illegal are recorded `winner='them'` — per `eval_vs_gnugo.py` those are net wins. Corrected **156–100, 60.9%** vs plain PPO 6M **129–127, 50.4%**. Per-level (corrected): level 1: 43–21, level 3: 38–26, level 5: 42–22, level 8: 33–31. Gains at every level; level 8 (strongest GNU Go) is the closest, 33–31.
+
+**Caveats:**
+- Mid-run BC treatment change (above) — the exact BC schedule that produced this is not a clean single treatment. A replication with uniform treatment would firm this up.
+- 256-game ladder has ~±6pp 95% CI at 60% win rate; the 10.5pp gap over 50.4% is well outside noise, but the *size* of the gap is noisy.
+- The `winner='them'` eval-script reporting bug (resignations/illegal moves logged under the forfeiter's opponent key) remains unpatched; accounted manually here and for the 3M/9M ladders.
+- Not tested: whether BC from step 0 (not just 3M→6M) helps, whether a lighter/heavier coef changes things, or whether the gain holds past 6M.
+
+**Literature context:**
+- DQfD (Hester et al., arXiv:1704.03732): pre-training + retaining expert demonstrations during deep RL (demonstration replay with supervised large-margin loss alongside TD loss) beat the demonstrators on 14 of 42 Atari games. Game-domain evidence that keeping the imitation signal alive during RL helps — our setup is a simpler cousin (separate BC phase, no prioritized demo replay, no margin loss).
+- IN-RIL (arXiv:2505.10442): interleaving IL and RL updates improves sample efficiency and stability in robotics, with extra machinery to keep the two gradient streams from interfering. We used only the interleaving idea — separate phases so PPO's clipped updates never mix with supervised gradients — none of the gradient-separation machinery. Our result is consistent with the interleaving claim but is not a test of IN-RIL itself.
+- The earlier tiny-model lit review (`workspace/research/tiny-model-lit-review.md`) already flagged interleaved IL+RL as an open question; this run answers it affirmatively for our setup.
+
+**Verdict:** PPO+BC (60.9%) is the new strongest model, decisively beating plain PPO at the matched 6M budget. Shipped to the demo page (see below). The plain-PPO plateau at 50.4%/46.1% was not a capacity ceiling — keeping human moves in the training loop broke through it.

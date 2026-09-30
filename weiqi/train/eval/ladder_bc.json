@@ -1,0 +1,2562 @@
+[
+  {
+    "level": 1,
+    "game": 0,
+    "net_black": true,
+    "winner": "net",
+    "reason": "score B:55.0 W:33.5",
+    "moves": 67,
+    "temperature": 0.2,
+    "seconds": 15.0
+  },
+  {
+    "level": 1,
+    "game": 1,
+    "net_black": false,
+    "winner": "gnugo",
+    "reason": "score B:54.0 W:29.5",
+    "moves": 108,
+    "temperature": 0.2,
+    "seconds": 15.6
+  },
+  {
+    "level": 1,
+    "game": 2,
+    "net_black": true,
+    "winner": "net",
+    "reason": "score B:53.0 W:30.5",
+    "moves": 81,
+    "temperature": 0.2,
+    "seconds": 12.5
+  },
+  {
+    "level": 1,
+    "game": 3,
+    "net_black": false,
+    "winner": "gnugo",
+    "reason": "score B:57.0 W:21.5",
+    "moves": 118,
+    "temperature": 0.2,
+    "seconds": 19.0
+  },
+  {
+    "level": 1,
+    "game": 4,
+    "net_black": true,
+    "winner": "gnugo",
+    "reason": "score B:39.0 W:43.5",
+    "moves": 78,
+    "temperature": 0.2,
+    "seconds": 14.7
+  },
+  {
+    "level": 1,
+    "game": 5,
+    "net_black": false,
+    "winner": "net",
+    "reason": "score B:40.0 W:40.5",
+    "moves": 70,
+    "temperature": 0.2,
+    "seconds": 10.7
+  },
+  {
+    "level": 1,
+    "game": 6,
+    "net_black": true,
+    "winner": "gnugo",
+    "reason": "score B:27.0 W:37.5",
+    "moves": 63,
+    "temperature": 0.2,
+    "seconds": 12.1
+  },
+  {
+    "level": 1,
+    "game": 7,
+    "net_black": false,
+    "winner": "net",
+    "reason": "score B:36.0 W:52.5",
+    "moves": 74,
+    "temperature": 0.2,
+    "seconds": 14.5
+  },
+  {
+    "level": 1,
+    "game": 8,
+    "net_black": true,
+    "winner": "net",
+    "reason": "score B:48.0 W:37.5",
+    "moves": 85,
+    "temperature": 0.2,
+    "seconds": 13.4
+  },
+  {
+    "level": 1,
+    "game": 9,
+    "net_black": false,
+    "winner": "net",
+    "reason": "score B:32.0 W:51.5",
+    "moves": 62,
+    "temperature": 0.2,
+    "seconds": 6.7
+  },
+  {
+    "level": 1,
+    "game": 10,
+    "net_black": true,
+    "winner": "net",
+    "reason": "score B:47.0 W:31.5",
+    "moves": 69,
+    "temperature": 0.2,
+    "seconds": 11.9
+  },
+  {
+    "level": 1,
+    "game": 11,
+    "net_black": false,
+    "winner": "gnugo",
+    "reason": "score B:45.0 W:35.5",
+    "moves": 87,
+    "temperature": 0.2,
+    "seconds": 12.2
+  },
+  {
+    "level": 1,
+    "game": 12,
+    "net_black": true,
+    "winner": "gnugo",
+    "reason": "score B:43.0 W:44.5",
+    "moves": 83,
+    "temperature": 0.2,
+    "seconds": 15.2
+  },
+  {
+    "level": 1,
+    "game": 13,
+    "net_black": false,
+    "winner": "net",
+    "reason": "score B:36.0 W:52.5",
+    "moves": 60,
+    "temperature": 0.2,
+    "seconds": 11.5
+  },
+  {
+    "level": 1,
+    "game": 14,
+    "net_black": true,
+    "winner": "net",
+    "reason": "score B:54.0 W:29.5",
+    "moves": 93,
+    "temperature": 0.2,
+    "seconds": 10.2
+  },
+  {
+    "level": 1,
+    "game": 15,
+    "net_black": false,
+    "winner": "net",
+    "reason": "score B:24.0 W:59.5",
+    "moves": 70,
+    "temperature": 0.2,
+    "seconds": 11.6
+  },
+  {
+    "level": 1,
+    "game": 16,
+    "net_black": true,
+    "winner": "net",
+    "reason": "score B:54.0 W:34.5",
+    "moves": 57,
+    "temperature": 0.2,
+    "seconds": 8.5
+  },
+  {
+    "level": 1,
+    "game": 17,
+    "net_black": false,
+    "winner": "net",
+    "reason": "score B:25.0 W:47.5",
+    "moves": 51,
+    "temperature": 0.2,
+    "seconds": 5.4
+  },
+  {
+    "level": 1,
+    "game": 18,
+    "net_black": true,
+    "winner": "gnugo",
+    "reason": "score B:41.0 W:43.5",
+    "moves": 89,
+    "temperature": 0.2,
+    "seconds": 10.8
+  },
+  {
+    "level": 1,
+    "game": 19,
+    "net_black": false,
+    "winner": "net",
+    "reason": "score B:43.0 W:44.5",
+    "moves": 88,
+    "temperature": 0.2,
+    "seconds": 14.9
+  },
+  {
+    "level": 1,
+    "game": 20,
+    "net_black": true,
+    "winner": "gnugo",
+    "reason": "score B:41.0 W:46.5",
+    "moves": 73,
+    "temperature": 0.2,
+    "seconds": 12.6
+  },
+  {
+    "level": 1,
+    "game": 21,
+    "net_black": false,
+    "winner": "net",
+    "reason": "score B:34.0 W:52.5",
+    "moves": 84,
+    "temperature": 0.2,
+    "seconds": 15.6
+  },
+  {
+    "level": 1,
+    "game": 22,
+    "net_black": true,
+    "winner": "net",
+    "reason": "score B:47.0 W:37.5",
+    "moves": 81,
+    "temperature": 0.2,
+    "seconds": 12.7
+  },
+  {
+    "level": 1,
+    "game": 23,
+    "net_black": false,
+    "winner": "net",
+    "reason": "score B:36.0 W:39.5",
+    "moves": 65,
+    "temperature": 0.2,
+    "seconds": 10.1
+  },
+  {
+    "level": 1,
+    "game": 24,
+    "net_black": true,
+    "winner": "net",
+    "reason": "score B:47.0 W:40.5",
+    "moves": 87,
+    "temperature": 0.2,
+    "seconds": 11.4
+  },
+  {
+    "level": 1,
+    "game": 25,
+    "net_black": false,
+    "winner": "gnugo",
+    "reason": "score B:42.0 W:38.5",
+    "moves": 60,
+    "temperature": 0.2,
+    "seconds": 14.6
+  },
+  {
+    "level": 1,
+    "game": 26,
+    "net_black": true,
+    "winner": "net",
+    "reason": "score B:46.0 W:38.5",
+    "moves": 69,
+    "temperature": 0.2,
+    "seconds": 7.7
+  },
+  {
+    "level": 1,
+    "game": 27,
+    "net_black": false,
+    "winner": "gnugo",
+    "reason": "score B:45.0 W:42.5",
+    "moves": 94,
+    "temperature": 0.2,
+    "seconds": 9.8
+  },
+  {
+    "level": 1,
+    "game": 28,
+    "net_black": true,
+    "winner": "net",
+    "reason": "score B:50.0 W:37.5",
+    "moves": 65,
+    "temperature": 0.2,
+    "seconds": 9.3
+  },
+  {
+    "level": 1,
+    "game": 29,
+    "net_black": false,
+    "winner": "net",
+    "reason": "score B:40.0 W:48.5",
+    "moves": 66,
+    "temperature": 0.2,
+    "seconds": 12.0
+  },
+  {
+    "level": 1,
+    "game": 30,
+    "net_black": true,
+    "winner": "net",
+    "reason": "score B:50.0 W:35.5",
+    "moves": 73,
+    "temperature": 0.2,
+    "seconds": 12.1
+  },
+  {
+    "level": 1,
+    "game": 31,
+    "net_black": false,
+    "winner": "net",
+    "reason": "score B:26.0 W:30.5",
+    "moves": 48,
+    "temperature": 0.2,
+    "seconds": 8.0
+  },
+  {
+    "level": 1,
+    "game": 32,
+    "net_black": true,
+    "winner": "gnugo",
+    "reason": "score B:35.0 W:51.5",
+    "moves": 93,
+    "temperature": 0.2,
+    "seconds": 7.8
+  },
+  {
+    "level": 1,
+    "game": 33,
+    "net_black": false,
+    "winner": "gnugo",
+    "reason": "score B:40.0 W:37.5",
+    "moves": 46,
+    "temperature": 0.2,
+    "seconds": 5.9
+  },
+  {
+    "level": 1,
+    "game": 34,
+    "net_black": true,
+    "winner": "net",
+    "reason": "score B:38.0 W:35.5",
+    "moves": 45,
+    "temperature": 0.2,
+    "seconds": 7.0
+  },
+  {
+    "level": 1,
+    "game": 35,
+    "net_black": false,
+    "winner": "net",
+    "reason": "score B:32.0 W:56.5",
+    "moves": 94,
+    "temperature": 0.2,
+    "seconds": 11.4
+  },
+  {
+    "level": 1,
+    "game": 36,
+    "net_black": true,
+    "winner": "gnugo",
+    "reason": "score B:18.0 W:38.5",
+    "moves": 37,
+    "temperature": 0.2,
+    "seconds": 5.8
+  },
+  {
+    "level": 1,
+    "game": 37,
+    "net_black": false,
+    "winner": "net",
+    "reason": "score B:34.0 W:44.5",
+    "moves": 76,
+    "temperature": 0.2,
+    "seconds": 8.3
+  },
+  {
+    "level": 1,
+    "game": 38,
+    "net_black": true,
+    "winner": "net",
+    "reason": "score B:44.0 W:43.5",
+    "moves": 99,
+    "temperature": 0.2,
+    "seconds": 13.8
+  },
+  {
+    "level": 1,
+    "game": 39,
+    "net_black": false,
+    "winner": "net",
+    "reason": "score B:28.0 W:53.5",
+    "moves": 60,
+    "temperature": 0.2,
+    "seconds": 10.6
+  },
+  {
+    "level": 1,
+    "game": 40,
+    "net_black": true,
+    "winner": "net",
+    "reason": "score B:52.0 W:35.5",
+    "moves": 61,
+    "temperature": 0.2,
+    "seconds": 2.3
+  },
+  {
+    "level": 1,
+    "game": 41,
+    "net_black": false,
+    "winner": "gnugo",
+    "reason": "score B:45.0 W:43.5",
+    "moves": 71,
+    "temperature": 0.2,
+    "seconds": 9.7
+  },
+  {
+    "level": 1,
+    "game": 42,
+    "net_black": true,
+    "winner": "gnugo",
+    "reason": "score B:42.0 W:45.5",
+    "moves": 99,
+    "temperature": 0.2,
+    "seconds": 14.4
+  },
+  {
+    "level": 1,
+    "game": 43,
+    "net_black": false,
+    "winner": "net",
+    "reason": "score B:39.0 W:49.5",
+    "moves": 34,
+    "temperature": 0.2,
+    "seconds": 4.1
+  },
+  {
+    "level": 1,
+    "game": 44,
+    "net_black": true,
+    "winner": "net",
+    "reason": "score B:45.0 W:30.5",
+    "moves": 73,
+    "temperature": 0.2,
+    "seconds": 14.4
+  },
+  {
+    "level": 1,
+    "game": 45,
+    "net_black": false,
+    "winner": "net",
+    "reason": "score B:23.0 W:54.5",
+    "moves": 56,
+    "temperature": 0.2,
+    "seconds": 6.5
+  },
+  {
+    "level": 1,
+    "game": 46,
+    "net_black": true,
+    "winner": "net",
+    "reason": "score B:44.0 W:42.5",
+    "moves": 89,
+    "temperature": 0.2,
+    "seconds": 11.3
+  },
+  {
+    "level": 1,
+    "game": 47,
+    "net_black": false,
+    "winner": "gnugo",
+    "reason": "score B:45.0 W:42.5",
+    "moves": 69,
+    "temperature": 0.2,
+    "seconds": 12.9
+  },
+  {
+    "level": 1,
+    "game": 48,
+    "net_black": true,
+    "winner": "net",
+    "reason": "score B:51.0 W:36.5",
+    "moves": 71,
+    "temperature": 0.2,
+    "seconds": 9.8
+  },
+  {
+    "level": 1,
+    "game": 49,
+    "net_black": false,
+    "winner": "net",
+    "reason": "score B:37.0 W:51.5",
+    "moves": 54,
+    "temperature": 0.2,
+    "seconds": 8.5
+  },
+  {
+    "level": 1,
+    "game": 50,
+    "net_black": true,
+    "winner": "gnugo",
+    "reason": "score B:37.0 W:48.5",
+    "moves": 101,
+    "temperature": 0.2,
+    "seconds": 17.7
+  },
+  {
+    "level": 1,
+    "game": 51,
+    "net_black": false,
+    "winner": "net",
+    "reason": "score B:33.0 W:46.5",
+    "moves": 78,
+    "temperature": 0.2,
+    "seconds": 12.4
+  },
+  {
+    "level": 1,
+    "game": 52,
+    "net_black": true,
+    "winner": "gnugo",
+    "reason": "score B:38.0 W:46.5",
+    "moves": 153,
+    "temperature": 0.2,
+    "seconds": 17.1
+  },
+  {
+    "level": 1,
+    "game": 53,
+    "net_black": false,
+    "winner": "gnugo",
+    "reason": "score B:52.0 W:35.5",
+    "moves": 91,
+    "temperature": 0.2,
+    "seconds": 12.8
+  },
+  {
+    "level": 1,
+    "game": 54,
+    "net_black": true,
+    "winner": "them",
+    "reason": "gnugo resigned",
+    "moves": 51,
+    "temperature": 0.2,
+    "seconds": 6.9
+  },
+  {
+    "level": 1,
+    "game": 55,
+    "net_black": false,
+    "winner": "net",
+    "reason": "score B:29.0 W:46.5",
+    "moves": 53,
+    "temperature": 0.2,
+    "seconds": 9.4
+  },
+  {
+    "level": 1,
+    "game": 56,
+    "net_black": true,
+    "winner": "gnugo",
+    "reason": "score B:39.0 W:44.5",
+    "moves": 97,
+    "temperature": 0.2,
+    "seconds": 15.5
+  },
+  {
+    "level": 1,
+    "game": 57,
+    "net_black": false,
+    "winner": "net",
+    "reason": "score B:26.0 W:60.5",
+    "moves": 56,
+    "temperature": 0.2,
+    "seconds": 7.7
+  },
+  {
+    "level": 1,
+    "game": 58,
+    "net_black": true,
+    "winner": "gnugo",
+    "reason": "score B:40.0 W:44.5",
+    "moves": 89,
+    "temperature": 0.2,
+    "seconds": 10.2
+  },
+  {
+    "level": 1,
+    "game": 59,
+    "net_black": false,
+    "winner": "net",
+    "reason": "score B:37.0 W:51.5",
+    "moves": 54,
+    "temperature": 0.2,
+    "seconds": 12.1
+  },
+  {
+    "level": 1,
+    "game": 60,
+    "net_black": true,
+    "winner": "net",
+    "reason": "score B:61.0 W:27.5",
+    "moves": 55,
+    "temperature": 0.2,
+    "seconds": 8.4
+  },
+  {
+    "level": 1,
+    "game": 61,
+    "net_black": false,
+    "winner": "them",
+    "reason": "gnugo illegal move J7",
+    "moves": 78,
+    "temperature": 0.2,
+    "seconds": 7.8
+  },
+  {
+    "level": 1,
+    "game": 62,
+    "net_black": true,
+    "winner": "net",
+    "reason": "score B:54.0 W:34.5",
+    "moves": 55,
+    "temperature": 0.2,
+    "seconds": 7.7
+  },
+  {
+    "level": 1,
+    "game": 63,
+    "net_black": false,
+    "winner": "net",
+    "reason": "score B:35.0 W:52.5",
+    "moves": 80,
+    "temperature": 0.2,
+    "seconds": 10.7
+  },
+  {
+    "level": 3,
+    "game": 0,
+    "net_black": true,
+    "winner": "gnugo",
+    "reason": "score B:34.0 W:49.5",
+    "moves": 91,
+    "temperature": 0.2,
+    "seconds": 28.8
+  },
+  {
+    "level": 3,
+    "game": 1,
+    "net_black": false,
+    "winner": "net",
+    "reason": "score B:42.0 W:44.5",
+    "moves": 89,
+    "temperature": 0.2,
+    "seconds": 20.2
+  },
+  {
+    "level": 3,
+    "game": 2,
+    "net_black": true,
+    "winner": "net",
+    "reason": "score B:46.0 W:41.5",
+    "moves": 71,
+    "temperature": 0.2,
+    "seconds": 13.7
+  },
+  {
+    "level": 3,
+    "game": 3,
+    "net_black": false,
+    "winner": "net",
+    "reason": "score B:42.0 W:42.5",
+    "moves": 78,
+    "temperature": 0.2,
+    "seconds": 13.3
+  },
+  {
+    "level": 3,
+    "game": 4,
+    "net_black": true,
+    "winner": "gnugo",
+    "reason": "score B:42.0 W:44.5",
+    "moves": 85,
+    "temperature": 0.2,
+    "seconds": 23.6
+  },
+  {
+    "level": 3,
+    "game": 5,
+    "net_black": false,
+    "winner": "gnugo",
+    "reason": "score B:48.0 W:40.5",
+    "moves": 66,
+    "temperature": 0.2,
+    "seconds": 12.2
+  },
+  {
+    "level": 3,
+    "game": 6,
+    "net_black": true,
+    "winner": "gnugo",
+    "reason": "score B:43.0 W:44.5",
+    "moves": 87,
+    "temperature": 0.2,
+    "seconds": 13.0
+  },
+  {
+    "level": 3,
+    "game": 7,
+    "net_black": false,
+    "winner": "gnugo",
+    "reason": "score B:52.0 W:26.5",
+    "moves": 87,
+    "temperature": 0.2,
+    "seconds": 21.8
+  },
+  {
+    "level": 3,
+    "game": 8,
+    "net_black": true,
+    "winner": "net",
+    "reason": "score B:44.0 W:27.5",
+    "moves": 73,
+    "temperature": 0.2,
+    "seconds": 16.8
+  },
+  {
+    "level": 3,
+    "game": 9,
+    "net_black": false,
+    "winner": "gnugo",
+    "reason": "score B:44.0 W:42.5",
+    "moves": 90,
+    "temperature": 0.2,
+    "seconds": 17.9
+  },
+  {
+    "level": 3,
+    "game": 10,
+    "net_black": true,
+    "winner": "gnugo",
+    "reason": "score B:42.0 W:45.5",
+    "moves": 89,
+    "temperature": 0.2,
+    "seconds": 16.9
+  },
+  {
+    "level": 3,
+    "game": 11,
+    "net_black": false,
+    "winner": "gnugo",
+    "reason": "score B:47.0 W:40.5",
+    "moves": 69,
+    "temperature": 0.2,
+    "seconds": 18.2
+  },
+  {
+    "level": 3,
+    "game": 12,
+    "net_black": true,
+    "winner": "gnugo",
+    "reason": "score B:35.0 W:45.5",
+    "moves": 74,
+    "temperature": 0.2,
+    "seconds": 17.8
+  },
+  {
+    "level": 3,
+    "game": 13,
+    "net_black": false,
+    "winner": "net",
+    "reason": "score B:36.0 W:51.5",
+    "moves": 72,
+    "temperature": 0.2,
+    "seconds": 13.9
+  },
+  {
+    "level": 3,
+    "game": 14,
+    "net_black": true,
+    "winner": "gnugo",
+    "reason": "score B:36.0 W:50.5",
+    "moves": 76,
+    "temperature": 0.2,
+    "seconds": 16.8
+  },
+  {
+    "level": 3,
+    "game": 15,
+    "net_black": false,
+    "winner": "net",
+    "reason": "score B:33.0 W:55.5",
+    "moves": 58,
+    "temperature": 0.2,
+    "seconds": 10.2
+  },
+  {
+    "level": 3,
+    "game": 16,
+    "net_black": true,
+    "winner": "gnugo",
+    "reason": "score B:34.0 W:47.5",
+    "moves": 121,
+    "temperature": 0.2,
+    "seconds": 20.7
+  },
+  {
+    "level": 3,
+    "game": 17,
+    "net_black": false,
+    "winner": "gnugo",
+    "reason": "score B:45.0 W:37.5",
+    "moves": 85,
+    "temperature": 0.2,
+    "seconds": 19.7
+  },
+  {
+    "level": 3,
+    "game": 18,
+    "net_black": true,
+    "winner": "net",
+    "reason": "score B:37.0 W:31.5",
+    "moves": 71,
+    "temperature": 0.2,
+    "seconds": 17.3
+  },
+  {
+    "level": 3,
+    "game": 19,
+    "net_black": false,
+    "winner": "net",
+    "reason": "score B:42.0 W:44.5",
+    "moves": 72,
+    "temperature": 0.2,
+    "seconds": 21.2
+  },
+  {
+    "level": 3,
+    "game": 20,
+    "net_black": true,
+    "winner": "net",
+    "reason": "score B:42.0 W:41.5",
+    "moves": 89,
+    "temperature": 0.2,
+    "seconds": 13.8
+  },
+  {
+    "level": 3,
+    "game": 21,
+    "net_black": false,
+    "winner": "net",
+    "reason": "score B:41.0 W:42.5",
+    "moves": 83,
+    "temperature": 0.2,
+    "seconds": 9.9
+  },
+  {
+    "level": 3,
+    "game": 22,
+    "net_black": true,
+    "winner": "net",
+    "reason": "score B:44.0 W:41.5",
+    "moves": 65,
+    "temperature": 0.2,
+    "seconds": 13.9
+  },
+  {
+    "level": 3,
+    "game": 23,
+    "net_black": false,
+    "winner": "net",
+    "reason": "score B:36.0 W:50.5",
+    "moves": 106,
+    "temperature": 0.2,
+    "seconds": 15.6
+  },
+  {
+    "level": 3,
+    "game": 24,
+    "net_black": true,
+    "winner": "net",
+    "reason": "score B:48.0 W:33.5",
+    "moves": 81,
+    "temperature": 0.2,
+    "seconds": 6.7
+  },
+  {
+    "level": 3,
+    "game": 25,
+    "net_black": false,
+    "winner": "gnugo",
+    "reason": "score B:47.0 W:37.5",
+    "moves": 96,
+    "temperature": 0.2,
+    "seconds": 18.9
+  },
+  {
+    "level": 3,
+    "game": 26,
+    "net_black": true,
+    "winner": "net",
+    "reason": "score B:52.0 W:34.5",
+    "moves": 114,
+    "temperature": 0.2,
+    "seconds": 11.8
+  },
+  {
+    "level": 3,
+    "game": 27,
+    "net_black": false,
+    "winner": "net",
+    "reason": "score B:26.0 W:48.5",
+    "moves": 58,
+    "temperature": 0.2,
+    "seconds": 11.5
+  },
+  {
+    "level": 3,
+    "game": 28,
+    "net_black": true,
+    "winner": "net",
+    "reason": "score B:44.0 W:43.5",
+    "moves": 91,
+    "temperature": 0.2,
+    "seconds": 29.3
+  },
+  {
+    "level": 3,
+    "game": 29,
+    "net_black": false,
+    "winner": "gnugo",
+    "reason": "score B:44.0 W:43.5",
+    "moves": 65,
+    "temperature": 0.2,
+    "seconds": 10.6
+  },
+  {
+    "level": 3,
+    "game": 30,
+    "net_black": true,
+    "winner": "net",
+    "reason": "score B:52.0 W:34.5",
+    "moves": 73,
+    "temperature": 0.2,
+    "seconds": 13.4
+  },
+  {
+    "level": 3,
+    "game": 31,
+    "net_black": false,
+    "winner": "gnugo",
+    "reason": "score B:48.0 W:39.5",
+    "moves": 81,
+    "temperature": 0.2,
+    "seconds": 16.9
+  },
+  {
+    "level": 3,
+    "game": 32,
+    "net_black": true,
+    "winner": "net",
+    "reason": "score B:51.0 W:31.5",
+    "moves": 65,
+    "temperature": 0.2,
+    "seconds": 11.1
+  },
+  {
+    "level": 3,
+    "game": 33,
+    "net_black": false,
+    "winner": "net",
+    "reason": "score B:41.0 W:45.5",
+    "moves": 94,
+    "temperature": 0.2,
+    "seconds": 14.9
+  },
+  {
+    "level": 3,
+    "game": 34,
+    "net_black": true,
+    "winner": "net",
+    "reason": "score B:53.0 W:35.5",
+    "moves": 41,
+    "temperature": 0.2,
+    "seconds": 6.2
+  },
+  {
+    "level": 3,
+    "game": 35,
+    "net_black": false,
+    "winner": "gnugo",
+    "reason": "score B:52.0 W:36.5",
+    "moves": 75,
+    "temperature": 0.2,
+    "seconds": 10.9
+  },
+  {
+    "level": 3,
+    "game": 36,
+    "net_black": true,
+    "winner": "net",
+    "reason": "score B:52.0 W:32.5",
+    "moves": 70,
+    "temperature": 0.2,
+    "seconds": 11.7
+  },
+  {
+    "level": 3,
+    "game": 37,
+    "net_black": false,
+    "winner": "net",
+    "reason": "score B:31.0 W:56.5",
+    "moves": 56,
+    "temperature": 0.2,
+    "seconds": 12.1
+  },
+  {
+    "level": 3,
+    "game": 38,
+    "net_black": true,
+    "winner": "gnugo",
+    "reason": "score B:35.0 W:50.5",
+    "moves": 99,
+    "temperature": 0.2,
+    "seconds": 20.4
+  },
+  {
+    "level": 3,
+    "game": 39,
+    "net_black": false,
+    "winner": "net",
+    "reason": "score B:30.0 W:38.5",
+    "moves": 58,
+    "temperature": 0.2,
+    "seconds": 10.1
+  },
+  {
+    "level": 3,
+    "game": 40,
+    "net_black": true,
+    "winner": "gnugo",
+    "reason": "score B:35.0 W:50.5",
+    "moves": 97,
+    "temperature": 0.2,
+    "seconds": 17.5
+  },
+  {
+    "level": 3,
+    "game": 41,
+    "net_black": false,
+    "winner": "net",
+    "reason": "score B:37.0 W:48.5",
+    "moves": 76,
+    "temperature": 0.2,
+    "seconds": 9.6
+  },
+  {
+    "level": 3,
+    "game": 42,
+    "net_black": true,
+    "winner": "gnugo",
+    "reason": "score B:34.0 W:52.5",
+    "moves": 99,
+    "temperature": 0.2,
+    "seconds": 26.8
+  },
+  {
+    "level": 3,
+    "game": 43,
+    "net_black": false,
+    "winner": "net",
+    "reason": "score B:35.0 W:50.5",
+    "moves": 86,
+    "temperature": 0.2,
+    "seconds": 20.5
+  },
+  {
+    "level": 3,
+    "game": 44,
+    "net_black": true,
+    "winner": "net",
+    "reason": "score B:51.0 W:35.5",
+    "moves": 71,
+    "temperature": 0.2,
+    "seconds": 10.6
+  },
+  {
+    "level": 3,
+    "game": 45,
+    "net_black": false,
+    "winner": "gnugo",
+    "reason": "score B:44.0 W:34.5",
+    "moves": 108,
+    "temperature": 0.2,
+    "seconds": 17.4
+  },
+  {
+    "level": 3,
+    "game": 46,
+    "net_black": true,
+    "winner": "gnugo",
+    "reason": "score B:38.0 W:48.5",
+    "moves": 121,
+    "temperature": 0.2,
+    "seconds": 28.5
+  },
+  {
+    "level": 3,
+    "game": 47,
+    "net_black": false,
+    "winner": "net",
+    "reason": "score B:40.0 W:46.5",
+    "moves": 63,
+    "temperature": 0.2,
+    "seconds": 16.8
+  },
+  {
+    "level": 3,
+    "game": 48,
+    "net_black": true,
+    "winner": "net",
+    "reason": "score B:46.0 W:40.5",
+    "moves": 99,
+    "temperature": 0.2,
+    "seconds": 16.9
+  },
+  {
+    "level": 3,
+    "game": 49,
+    "net_black": false,
+    "winner": "net",
+    "reason": "score B:37.0 W:48.5",
+    "moves": 66,
+    "temperature": 0.2,
+    "seconds": 13.6
+  },
+  {
+    "level": 3,
+    "game": 50,
+    "net_black": true,
+    "winner": "net",
+    "reason": "score B:43.0 W:38.5",
+    "moves": 81,
+    "temperature": 0.2,
+    "seconds": 12.4
+  },
+  {
+    "level": 3,
+    "game": 51,
+    "net_black": false,
+    "winner": "net",
+    "reason": "score B:27.0 W:37.5",
+    "moves": 56,
+    "temperature": 0.2,
+    "seconds": 11.3
+  },
+  {
+    "level": 3,
+    "game": 52,
+    "net_black": true,
+    "winner": "net",
+    "reason": "score B:49.0 W:37.5",
+    "moves": 87,
+    "temperature": 0.2,
+    "seconds": 24.5
+  },
+  {
+    "level": 3,
+    "game": 53,
+    "net_black": false,
+    "winner": "net",
+    "reason": "score B:19.0 W:48.5",
+    "moves": 39,
+    "temperature": 0.2,
+    "seconds": 5.3
+  },
+  {
+    "level": 3,
+    "game": 54,
+    "net_black": true,
+    "winner": "gnugo",
+    "reason": "score B:40.0 W:48.5",
+    "moves": 97,
+    "temperature": 0.2,
+    "seconds": 16.9
+  },
+  {
+    "level": 3,
+    "game": 55,
+    "net_black": false,
+    "winner": "net",
+    "reason": "score B:38.0 W:50.5",
+    "moves": 44,
+    "temperature": 0.2,
+    "seconds": 9.0
+  },
+  {
+    "level": 3,
+    "game": 56,
+    "net_black": true,
+    "winner": "gnugo",
+    "reason": "score B:29.0 W:56.5",
+    "moves": 97,
+    "temperature": 0.2,
+    "seconds": 18.9
+  },
+  {
+    "level": 3,
+    "game": 57,
+    "net_black": false,
+    "winner": "gnugo",
+    "reason": "score B:42.0 W:40.5",
+    "moves": 62,
+    "temperature": 0.2,
+    "seconds": 22.0
+  },
+  {
+    "level": 3,
+    "game": 58,
+    "net_black": true,
+    "winner": "net",
+    "reason": "score B:50.0 W:38.5",
+    "moves": 65,
+    "temperature": 0.2,
+    "seconds": 9.4
+  },
+  {
+    "level": 3,
+    "game": 59,
+    "net_black": false,
+    "winner": "net",
+    "reason": "score B:37.0 W:51.5",
+    "moves": 58,
+    "temperature": 0.2,
+    "seconds": 12.8
+  },
+  {
+    "level": 3,
+    "game": 60,
+    "net_black": true,
+    "winner": "gnugo",
+    "reason": "score B:37.0 W:47.5",
+    "moves": 89,
+    "temperature": 0.2,
+    "seconds": 13.7
+  },
+  {
+    "level": 3,
+    "game": 61,
+    "net_black": false,
+    "winner": "net",
+    "reason": "score B:43.0 W:43.5",
+    "moves": 78,
+    "temperature": 0.2,
+    "seconds": 11.5
+  },
+  {
+    "level": 3,
+    "game": 62,
+    "net_black": true,
+    "winner": "gnugo",
+    "reason": "score B:39.0 W:45.5",
+    "moves": 73,
+    "temperature": 0.2,
+    "seconds": 15.0
+  },
+  {
+    "level": 3,
+    "game": 63,
+    "net_black": false,
+    "winner": "net",
+    "reason": "score B:33.0 W:53.5",
+    "moves": 84,
+    "temperature": 0.2,
+    "seconds": 18.3
+  },
+  {
+    "level": 5,
+    "game": 0,
+    "net_black": true,
+    "winner": "gnugo",
+    "reason": "score B:42.0 W:45.5",
+    "moves": 79,
+    "temperature": 0.2,
+    "seconds": 22.2
+  },
+  {
+    "level": 5,
+    "game": 1,
+    "net_black": false,
+    "winner": "net",
+    "reason": "score B:39.0 W:45.5",
+    "moves": 100,
+    "temperature": 0.2,
+    "seconds": 20.2
+  },
+  {
+    "level": 5,
+    "game": 2,
+    "net_black": true,
+    "winner": "gnugo",
+    "reason": "score B:40.0 W:45.5",
+    "moves": 95,
+    "temperature": 0.2,
+    "seconds": 23.0
+  },
+  {
+    "level": 5,
+    "game": 3,
+    "net_black": false,
+    "winner": "net",
+    "reason": "score B:36.0 W:40.5",
+    "moves": 75,
+    "temperature": 0.2,
+    "seconds": 24.8
+  },
+  {
+    "level": 5,
+    "game": 4,
+    "net_black": true,
+    "winner": "net",
+    "reason": "score B:43.0 W:41.5",
+    "moves": 79,
+    "temperature": 0.2,
+    "seconds": 24.2
+  },
+  {
+    "level": 5,
+    "game": 5,
+    "net_black": false,
+    "winner": "gnugo",
+    "reason": "score B:44.0 W:43.5",
+    "moves": 83,
+    "temperature": 0.2,
+    "seconds": 32.0
+  },
+  {
+    "level": 5,
+    "game": 6,
+    "net_black": true,
+    "winner": "gnugo",
+    "reason": "score B:38.0 W:49.5",
+    "moves": 79,
+    "temperature": 0.2,
+    "seconds": 22.9
+  },
+  {
+    "level": 5,
+    "game": 7,
+    "net_black": false,
+    "winner": "net",
+    "reason": "score B:43.0 W:45.5",
+    "moves": 67,
+    "temperature": 0.2,
+    "seconds": 18.2
+  },
+  {
+    "level": 5,
+    "game": 8,
+    "net_black": true,
+    "winner": "net",
+    "reason": "score B:49.0 W:39.5",
+    "moves": 59,
+    "temperature": 0.2,
+    "seconds": 15.7
+  },
+  {
+    "level": 5,
+    "game": 9,
+    "net_black": false,
+    "winner": "net",
+    "reason": "score B:28.0 W:47.5",
+    "moves": 51,
+    "temperature": 0.2,
+    "seconds": 19.2
+  },
+  {
+    "level": 5,
+    "game": 10,
+    "net_black": true,
+    "winner": "net",
+    "reason": "score B:52.0 W:35.5",
+    "moves": 67,
+    "temperature": 0.2,
+    "seconds": 18.8
+  },
+  {
+    "level": 5,
+    "game": 11,
+    "net_black": false,
+    "winner": "net",
+    "reason": "score B:39.0 W:48.5",
+    "moves": 65,
+    "temperature": 0.2,
+    "seconds": 28.9
+  },
+  {
+    "level": 5,
+    "game": 12,
+    "net_black": true,
+    "winner": "net",
+    "reason": "score B:48.0 W:40.5",
+    "moves": 43,
+    "temperature": 0.2,
+    "seconds": 9.7
+  },
+  {
+    "level": 5,
+    "game": 13,
+    "net_black": false,
+    "winner": "net",
+    "reason": "score B:28.0 W:57.5",
+    "moves": 124,
+    "temperature": 0.2,
+    "seconds": 17.6
+  },
+  {
+    "level": 5,
+    "game": 14,
+    "net_black": true,
+    "winner": "gnugo",
+    "reason": "score B:40.0 W:46.5",
+    "moves": 95,
+    "temperature": 0.2,
+    "seconds": 28.1
+  },
+  {
+    "level": 5,
+    "game": 15,
+    "net_black": false,
+    "winner": "net",
+    "reason": "score B:41.0 W:47.5",
+    "moves": 66,
+    "temperature": 0.2,
+    "seconds": 37.3
+  },
+  {
+    "level": 5,
+    "game": 16,
+    "net_black": true,
+    "winner": "net",
+    "reason": "score B:40.0 W:33.5",
+    "moves": 77,
+    "temperature": 0.2,
+    "seconds": 17.8
+  },
+  {
+    "level": 5,
+    "game": 17,
+    "net_black": false,
+    "winner": "gnugo",
+    "reason": "score B:50.0 W:37.5",
+    "moves": 75,
+    "temperature": 0.2,
+    "seconds": 32.1
+  },
+  {
+    "level": 5,
+    "game": 18,
+    "net_black": true,
+    "winner": "net",
+    "reason": "score B:60.0 W:28.5",
+    "moves": 51,
+    "temperature": 0.2,
+    "seconds": 18.0
+  },
+  {
+    "level": 5,
+    "game": 19,
+    "net_black": false,
+    "winner": "gnugo",
+    "reason": "score B:47.0 W:40.5",
+    "moves": 84,
+    "temperature": 0.2,
+    "seconds": 22.2
+  },
+  {
+    "level": 5,
+    "game": 20,
+    "net_black": true,
+    "winner": "gnugo",
+    "reason": "score B:36.0 W:43.5",
+    "moves": 45,
+    "temperature": 0.2,
+    "seconds": 12.3
+  },
+  {
+    "level": 5,
+    "game": 21,
+    "net_black": false,
+    "winner": "net",
+    "reason": "score B:40.0 W:48.5",
+    "moves": 40,
+    "temperature": 0.2,
+    "seconds": 7.7
+  },
+  {
+    "level": 5,
+    "game": 22,
+    "net_black": true,
+    "winner": "net",
+    "reason": "score B:46.0 W:42.5",
+    "moves": 69,
+    "temperature": 0.2,
+    "seconds": 20.0
+  },
+  {
+    "level": 5,
+    "game": 23,
+    "net_black": false,
+    "winner": "net",
+    "reason": "score B:33.0 W:52.5",
+    "moves": 96,
+    "temperature": 0.2,
+    "seconds": 26.7
+  },
+  {
+    "level": 5,
+    "game": 24,
+    "net_black": true,
+    "winner": "gnugo",
+    "reason": "score B:34.0 W:51.5",
+    "moves": 93,
+    "temperature": 0.2,
+    "seconds": 30.0
+  },
+  {
+    "level": 5,
+    "game": 25,
+    "net_black": false,
+    "winner": "net",
+    "reason": "score B:37.0 W:43.5",
+    "moves": 72,
+    "temperature": 0.2,
+    "seconds": 16.6
+  },
+  {
+    "level": 5,
+    "game": 26,
+    "net_black": true,
+    "winner": "net",
+    "reason": "score B:46.0 W:41.5",
+    "moves": 79,
+    "temperature": 0.2,
+    "seconds": 30.6
+  },
+  {
+    "level": 5,
+    "game": 27,
+    "net_black": false,
+    "winner": "net",
+    "reason": "score B:33.0 W:44.5",
+    "moves": 74,
+    "temperature": 0.2,
+    "seconds": 22.2
+  },
+  {
+    "level": 5,
+    "game": 28,
+    "net_black": true,
+    "winner": "gnugo",
+    "reason": "score B:40.0 W:45.5",
+    "moves": 95,
+    "temperature": 0.2,
+    "seconds": 24.4
+  },
+  {
+    "level": 5,
+    "game": 29,
+    "net_black": false,
+    "winner": "net",
+    "reason": "score B:37.0 W:50.5",
+    "moves": 58,
+    "temperature": 0.2,
+    "seconds": 11.5
+  },
+  {
+    "level": 5,
+    "game": 30,
+    "net_black": true,
+    "winner": "net",
+    "reason": "score B:43.0 W:42.5",
+    "moves": 81,
+    "temperature": 0.2,
+    "seconds": 25.6
+  },
+  {
+    "level": 5,
+    "game": 31,
+    "net_black": false,
+    "winner": "gnugo",
+    "reason": "score B:45.0 W:41.5",
+    "moves": 96,
+    "temperature": 0.2,
+    "seconds": 27.0
+  },
+  {
+    "level": 5,
+    "game": 32,
+    "net_black": true,
+    "winner": "net",
+    "reason": "score B:47.0 W:36.5",
+    "moves": 89,
+    "temperature": 0.2,
+    "seconds": 18.4
+  },
+  {
+    "level": 5,
+    "game": 33,
+    "net_black": false,
+    "winner": "net",
+    "reason": "score B:38.0 W:44.5",
+    "moves": 77,
+    "temperature": 0.2,
+    "seconds": 27.2
+  },
+  {
+    "level": 5,
+    "game": 34,
+    "net_black": true,
+    "winner": "gnugo",
+    "reason": "score B:31.0 W:55.5",
+    "moves": 95,
+    "temperature": 0.2,
+    "seconds": 42.9
+  },
+  {
+    "level": 5,
+    "game": 35,
+    "net_black": false,
+    "winner": "net",
+    "reason": "score B:38.0 W:46.5",
+    "moves": 73,
+    "temperature": 0.2,
+    "seconds": 20.6
+  },
+  {
+    "level": 5,
+    "game": 36,
+    "net_black": true,
+    "winner": "net",
+    "reason": "score B:46.0 W:39.5",
+    "moves": 95,
+    "temperature": 0.2,
+    "seconds": 19.7
+  },
+  {
+    "level": 5,
+    "game": 37,
+    "net_black": false,
+    "winner": "gnugo",
+    "reason": "score B:48.0 W:37.5",
+    "moves": 86,
+    "temperature": 0.2,
+    "seconds": 33.7
+  },
+  {
+    "level": 5,
+    "game": 38,
+    "net_black": true,
+    "winner": "net",
+    "reason": "score B:47.0 W:36.5",
+    "moves": 49,
+    "temperature": 0.2,
+    "seconds": 12.4
+  },
+  {
+    "level": 5,
+    "game": 39,
+    "net_black": false,
+    "winner": "gnugo",
+    "reason": "score B:38.0 W:36.5",
+    "moves": 84,
+    "temperature": 0.2,
+    "seconds": 41.8
+  },
+  {
+    "level": 5,
+    "game": 40,
+    "net_black": true,
+    "winner": "net",
+    "reason": "score B:31.0 W:28.5",
+    "moves": 59,
+    "temperature": 0.2,
+    "seconds": 11.4
+  },
+  {
+    "level": 5,
+    "game": 41,
+    "net_black": false,
+    "winner": "net",
+    "reason": "score B:33.0 W:54.5",
+    "moves": 90,
+    "temperature": 0.2,
+    "seconds": 17.5
+  },
+  {
+    "level": 5,
+    "game": 42,
+    "net_black": true,
+    "winner": "net",
+    "reason": "score B:46.0 W:22.5",
+    "moves": 32,
+    "temperature": 0.2,
+    "seconds": 4.2
+  },
+  {
+    "level": 5,
+    "game": 43,
+    "net_black": false,
+    "winner": "net",
+    "reason": "score B:34.0 W:51.5",
+    "moves": 79,
+    "temperature": 0.2,
+    "seconds": 32.7
+  },
+  {
+    "level": 5,
+    "game": 44,
+    "net_black": true,
+    "winner": "gnugo",
+    "reason": "score B:39.0 W:45.5",
+    "moves": 78,
+    "temperature": 0.2,
+    "seconds": 52.1
+  },
+  {
+    "level": 5,
+    "game": 45,
+    "net_black": false,
+    "winner": "gnugo",
+    "reason": "score B:42.0 W:37.5",
+    "moves": 69,
+    "temperature": 0.2,
+    "seconds": 17.2
+  },
+  {
+    "level": 5,
+    "game": 46,
+    "net_black": true,
+    "winner": "gnugo",
+    "reason": "score B:39.0 W:47.5",
+    "moves": 85,
+    "temperature": 0.2,
+    "seconds": 22.6
+  },
+  {
+    "level": 5,
+    "game": 47,
+    "net_black": false,
+    "winner": "net",
+    "reason": "score B:37.0 W:47.5",
+    "moves": 82,
+    "temperature": 0.2,
+    "seconds": 32.2
+  },
+  {
+    "level": 5,
+    "game": 48,
+    "net_black": true,
+    "winner": "net",
+    "reason": "score B:46.0 W:39.5",
+    "moves": 83,
+    "temperature": 0.2,
+    "seconds": 31.5
+  },
+  {
+    "level": 5,
+    "game": 49,
+    "net_black": false,
+    "winner": "net",
+    "reason": "score B:35.0 W:46.5",
+    "moves": 76,
+    "temperature": 0.2,
+    "seconds": 20.8
+  },
+  {
+    "level": 5,
+    "game": 50,
+    "net_black": true,
+    "winner": "net",
+    "reason": "score B:50.0 W:36.5",
+    "moves": 81,
+    "temperature": 0.2,
+    "seconds": 31.7
+  },
+  {
+    "level": 5,
+    "game": 51,
+    "net_black": false,
+    "winner": "gnugo",
+    "reason": "score B:50.0 W:27.5",
+    "moves": 112,
+    "temperature": 0.2,
+    "seconds": 33.5
+  },
+  {
+    "level": 5,
+    "game": 52,
+    "net_black": true,
+    "winner": "gnugo",
+    "reason": "score B:32.0 W:53.5",
+    "moves": 95,
+    "temperature": 0.2,
+    "seconds": 23.7
+  },
+  {
+    "level": 5,
+    "game": 53,
+    "net_black": false,
+    "winner": "gnugo",
+    "reason": "score B:42.0 W:41.5",
+    "moves": 82,
+    "temperature": 0.2,
+    "seconds": 34.3
+  },
+  {
+    "level": 5,
+    "game": 54,
+    "net_black": true,
+    "winner": "net",
+    "reason": "score B:52.0 W:22.5",
+    "moves": 51,
+    "temperature": 0.2,
+    "seconds": 18.5
+  },
+  {
+    "level": 5,
+    "game": 55,
+    "net_black": false,
+    "winner": "net",
+    "reason": "score B:30.0 W:56.5",
+    "moves": 54,
+    "temperature": 0.2,
+    "seconds": 24.1
+  },
+  {
+    "level": 5,
+    "game": 56,
+    "net_black": true,
+    "winner": "net",
+    "reason": "score B:47.0 W:39.5",
+    "moves": 81,
+    "temperature": 0.2,
+    "seconds": 19.0
+  },
+  {
+    "level": 5,
+    "game": 57,
+    "net_black": false,
+    "winner": "net",
+    "reason": "score B:34.0 W:49.5",
+    "moves": 88,
+    "temperature": 0.2,
+    "seconds": 29.0
+  },
+  {
+    "level": 5,
+    "game": 58,
+    "net_black": true,
+    "winner": "net",
+    "reason": "score B:45.0 W:42.5",
+    "moves": 69,
+    "temperature": 0.2,
+    "seconds": 20.5
+  },
+  {
+    "level": 5,
+    "game": 59,
+    "net_black": false,
+    "winner": "gnugo",
+    "reason": "score B:48.0 W:36.5",
+    "moves": 90,
+    "temperature": 0.2,
+    "seconds": 28.5
+  },
+  {
+    "level": 5,
+    "game": 60,
+    "net_black": true,
+    "winner": "net",
+    "reason": "score B:58.0 W:29.5",
+    "moves": 65,
+    "temperature": 0.2,
+    "seconds": 8.8
+  },
+  {
+    "level": 5,
+    "game": 61,
+    "net_black": false,
+    "winner": "gnugo",
+    "reason": "score B:49.0 W:37.5",
+    "moves": 93,
+    "temperature": 0.2,
+    "seconds": 32.5
+  },
+  {
+    "level": 5,
+    "game": 62,
+    "net_black": true,
+    "winner": "net",
+    "reason": "score B:46.0 W:42.5",
+    "moves": 58,
+    "temperature": 0.2,
+    "seconds": 22.5
+  },
+  {
+    "level": 5,
+    "game": 63,
+    "net_black": false,
+    "winner": "net",
+    "reason": "score B:43.0 W:45.5",
+    "moves": 55,
+    "temperature": 0.2,
+    "seconds": 20.8
+  },
+  {
+    "level": 8,
+    "game": 0,
+    "net_black": true,
+    "winner": "gnugo",
+    "reason": "score B:36.0 W:48.5",
+    "moves": 101,
+    "temperature": 0.2,
+    "seconds": 67.7
+  },
+  {
+    "level": 8,
+    "game": 1,
+    "net_black": false,
+    "winner": "net",
+    "reason": "score B:38.0 W:47.5",
+    "moves": 88,
+    "temperature": 0.2,
+    "seconds": 48.8
+  },
+  {
+    "level": 8,
+    "game": 2,
+    "net_black": true,
+    "winner": "gnugo",
+    "reason": "score B:43.0 W:44.5",
+    "moves": 85,
+    "temperature": 0.2,
+    "seconds": 77.6
+  },
+  {
+    "level": 8,
+    "game": 3,
+    "net_black": false,
+    "winner": "net",
+    "reason": "score B:33.0 W:45.5",
+    "moves": 62,
+    "temperature": 0.2,
+    "seconds": 86.7
+  },
+  {
+    "level": 8,
+    "game": 4,
+    "net_black": true,
+    "winner": "net",
+    "reason": "score B:47.0 W:41.5",
+    "moves": 41,
+    "temperature": 0.2,
+    "seconds": 29.0
+  },
+  {
+    "level": 8,
+    "game": 5,
+    "net_black": false,
+    "winner": "gnugo",
+    "reason": "score B:43.0 W:38.5",
+    "moves": 86,
+    "temperature": 0.2,
+    "seconds": 56.1
+  },
+  {
+    "level": 8,
+    "game": 6,
+    "net_black": true,
+    "winner": "net",
+    "reason": "score B:51.0 W:37.5",
+    "moves": 49,
+    "temperature": 0.2,
+    "seconds": 24.5
+  },
+  {
+    "level": 8,
+    "game": 7,
+    "net_black": false,
+    "winner": "net",
+    "reason": "score B:38.0 W:49.5",
+    "moves": 74,
+    "temperature": 0.2,
+    "seconds": 40.6
+  },
+  {
+    "level": 8,
+    "game": 8,
+    "net_black": true,
+    "winner": "net",
+    "reason": "score B:53.0 W:34.5",
+    "moves": 79,
+    "temperature": 0.2,
+    "seconds": 62.3
+  },
+  {
+    "level": 8,
+    "game": 9,
+    "net_black": false,
+    "winner": "gnugo",
+    "reason": "score B:50.0 W:22.5",
+    "moves": 118,
+    "temperature": 0.2,
+    "seconds": 69.8
+  },
+  {
+    "level": 8,
+    "game": 10,
+    "net_black": true,
+    "winner": "net",
+    "reason": "score B:46.0 W:41.5",
+    "moves": 81,
+    "temperature": 0.2,
+    "seconds": 79.4
+  },
+  {
+    "level": 8,
+    "game": 11,
+    "net_black": false,
+    "winner": "net",
+    "reason": "score B:25.0 W:41.5",
+    "moves": 64,
+    "temperature": 0.2,
+    "seconds": 33.0
+  },
+  {
+    "level": 8,
+    "game": 12,
+    "net_black": true,
+    "winner": "net",
+    "reason": "score B:44.0 W:43.5",
+    "moves": 73,
+    "temperature": 0.2,
+    "seconds": 49.3
+  },
+  {
+    "level": 8,
+    "game": 13,
+    "net_black": false,
+    "winner": "net",
+    "reason": "score B:33.0 W:36.5",
+    "moves": 69,
+    "temperature": 0.2,
+    "seconds": 98.6
+  },
+  {
+    "level": 8,
+    "game": 14,
+    "net_black": true,
+    "winner": "net",
+    "reason": "score B:58.0 W:23.5",
+    "moves": 39,
+    "temperature": 0.2,
+    "seconds": 13.7
+  },
+  {
+    "level": 8,
+    "game": 15,
+    "net_black": false,
+    "winner": "net",
+    "reason": "score B:43.0 W:45.5",
+    "moves": 84,
+    "temperature": 0.2,
+    "seconds": 77.4
+  },
+  {
+    "level": 8,
+    "game": 16,
+    "net_black": true,
+    "winner": "net",
+    "reason": "score B:45.0 W:40.5",
+    "moves": 89,
+    "temperature": 0.2,
+    "seconds": 93.2
+  },
+  {
+    "level": 8,
+    "game": 17,
+    "net_black": false,
+    "winner": "net",
+    "reason": "score B:26.0 W:50.5",
+    "moves": 58,
+    "temperature": 0.2,
+    "seconds": 99.1
+  },
+  {
+    "level": 8,
+    "game": 18,
+    "net_black": true,
+    "winner": "net",
+    "reason": "score B:48.0 W:39.5",
+    "moves": 117,
+    "temperature": 0.2,
+    "seconds": 18.8
+  },
+  {
+    "level": 8,
+    "game": 19,
+    "net_black": false,
+    "winner": "gnugo",
+    "reason": "score B:44.0 W:40.5",
+    "moves": 85,
+    "temperature": 0.2,
+    "seconds": 110.4
+  },
+  {
+    "level": 8,
+    "game": 20,
+    "net_black": true,
+    "winner": "gnugo",
+    "reason": "score B:35.0 W:51.5",
+    "moves": 97,
+    "temperature": 0.2,
+    "seconds": 52.4
+  },
+  {
+    "level": 8,
+    "game": 21,
+    "net_black": false,
+    "winner": "gnugo",
+    "reason": "score B:42.0 W:36.5",
+    "moves": 69,
+    "temperature": 0.2,
+    "seconds": 65.4
+  },
+  {
+    "level": 8,
+    "game": 22,
+    "net_black": true,
+    "winner": "net",
+    "reason": "score B:46.0 W:22.5",
+    "moves": 32,
+    "temperature": 0.2,
+    "seconds": 9.5
+  },
+  {
+    "level": 8,
+    "game": 23,
+    "net_black": false,
+    "winner": "gnugo",
+    "reason": "score B:51.0 W:26.5",
+    "moves": 112,
+    "temperature": 0.2,
+    "seconds": 80.3
+  },
+  {
+    "level": 8,
+    "game": 24,
+    "net_black": true,
+    "winner": "gnugo",
+    "reason": "score B:32.0 W:51.5",
+    "moves": 149,
+    "temperature": 0.2,
+    "seconds": 94.2
+  },
+  {
+    "level": 8,
+    "game": 25,
+    "net_black": false,
+    "winner": "net",
+    "reason": "score B:38.0 W:46.5",
+    "moves": 74,
+    "temperature": 0.2,
+    "seconds": 33.3
+  },
+  {
+    "level": 8,
+    "game": 26,
+    "net_black": true,
+    "winner": "gnugo",
+    "reason": "score B:39.0 W:46.5",
+    "moves": 83,
+    "temperature": 0.2,
+    "seconds": 113.9
+  },
+  {
+    "level": 8,
+    "game": 27,
+    "net_black": false,
+    "winner": "net",
+    "reason": "score B:43.0 W:44.5",
+    "moves": 92,
+    "temperature": 0.2,
+    "seconds": 33.7
+  },
+  {
+    "level": 8,
+    "game": 28,
+    "net_black": true,
+    "winner": "gnugo",
+    "reason": "score B:39.0 W:46.5",
+    "moves": 81,
+    "temperature": 0.2,
+    "seconds": 113.2
+  },
+  {
+    "level": 8,
+    "game": 29,
+    "net_black": false,
+    "winner": "gnugo",
+    "reason": "score B:52.0 W:30.5",
+    "moves": 122,
+    "temperature": 0.2,
+    "seconds": 316.6
+  },
+  {
+    "level": 8,
+    "game": 30,
+    "net_black": true,
+    "winner": "gnugo",
+    "reason": "score B:31.0 W:38.5",
+    "moves": 55,
+    "temperature": 0.2,
+    "seconds": 84.1
+  },
+  {
+    "level": 8,
+    "game": 31,
+    "net_black": false,
+    "winner": "net",
+    "reason": "score B:34.0 W:53.5",
+    "moves": 84,
+    "temperature": 0.2,
+    "seconds": 30.3
+  },
+  {
+    "level": 8,
+    "game": 32,
+    "net_black": true,
+    "winner": "net",
+    "reason": "score B:53.0 W:35.5",
+    "moves": 61,
+    "temperature": 0.2,
+    "seconds": 78.8
+  },
+  {
+    "level": 8,
+    "game": 33,
+    "net_black": false,
+    "winner": "net",
+    "reason": "score B:36.0 W:43.5",
+    "moves": 84,
+    "temperature": 0.2,
+    "seconds": 105.4
+  },
+  {
+    "level": 8,
+    "game": 34,
+    "net_black": true,
+    "winner": "gnugo",
+    "reason": "score B:37.0 W:49.5",
+    "moves": 87,
+    "temperature": 0.2,
+    "seconds": 119.7
+  },
+  {
+    "level": 8,
+    "game": 35,
+    "net_black": false,
+    "winner": "net",
+    "reason": "score B:37.0 W:41.5",
+    "moves": 65,
+    "temperature": 0.2,
+    "seconds": 92.9
+  },
+  {
+    "level": 8,
+    "game": 36,
+    "net_black": true,
+    "winner": "gnugo",
+    "reason": "score B:39.0 W:46.5",
+    "moves": 83,
+    "temperature": 0.2,
+    "seconds": 91.8
+  },
+  {
+    "level": 8,
+    "game": 37,
+    "net_black": false,
+    "winner": "gnugo",
+    "reason": "score B:42.0 W:38.5",
+    "moves": 71,
+    "temperature": 0.2,
+    "seconds": 77.9
+  },
+  {
+    "level": 8,
+    "game": 38,
+    "net_black": true,
+    "winner": "net",
+    "reason": "score B:53.0 W:33.5",
+    "moves": 95,
+    "temperature": 0.2,
+    "seconds": 77.8
+  },
+  {
+    "level": 8,
+    "game": 39,
+    "net_black": false,
+    "winner": "gnugo",
+    "reason": "score B:44.0 W:41.5",
+    "moves": 78,
+    "temperature": 0.2,
+    "seconds": 42.2
+  },
+  {
+    "level": 8,
+    "game": 40,
+    "net_black": true,
+    "winner": "gnugo",
+    "reason": "score B:29.0 W:49.5",
+    "moves": 115,
+    "temperature": 0.2,
+    "seconds": 108.0
+  },
+  {
+    "level": 8,
+    "game": 41,
+    "net_black": false,
+    "winner": "net",
+    "reason": "score B:39.0 W:45.5",
+    "moves": 98,
+    "temperature": 0.2,
+    "seconds": 66.2
+  },
+  {
+    "level": 8,
+    "game": 42,
+    "net_black": true,
+    "winner": "net",
+    "reason": "score B:51.0 W:36.5",
+    "moves": 81,
+    "temperature": 0.2,
+    "seconds": 54.8
+  },
+  {
+    "level": 8,
+    "game": 43,
+    "net_black": false,
+    "winner": "net",
+    "reason": "score B:42.0 W:43.5",
+    "moves": 82,
+    "temperature": 0.2,
+    "seconds": 29.7
+  },
+  {
+    "level": 8,
+    "game": 44,
+    "net_black": true,
+    "winner": "net",
+    "reason": "score B:41.0 W:32.5",
+    "moves": 73,
+    "temperature": 0.2,
+    "seconds": 35.1
+  },
+  {
+    "level": 8,
+    "game": 45,
+    "net_black": false,
+    "winner": "gnugo",
+    "reason": "score B:49.0 W:33.5",
+    "moves": 118,
+    "temperature": 0.2,
+    "seconds": 70.1
+  },
+  {
+    "level": 8,
+    "game": 46,
+    "net_black": true,
+    "winner": "gnugo",
+    "reason": "score B:30.0 W:56.5",
+    "moves": 95,
+    "temperature": 0.2,
+    "seconds": 114.1
+  },
+  {
+    "level": 8,
+    "game": 47,
+    "net_black": false,
+    "winner": "net",
+    "reason": "score B:34.0 W:48.5",
+    "moves": 72,
+    "temperature": 0.2,
+    "seconds": 46.5
+  },
+  {
+    "level": 8,
+    "game": 48,
+    "net_black": true,
+    "winner": "gnugo",
+    "reason": "score B:42.0 W:45.5",
+    "moves": 93,
+    "temperature": 0.2,
+    "seconds": 85.0
+  },
+  {
+    "level": 8,
+    "game": 49,
+    "net_black": false,
+    "winner": "gnugo",
+    "reason": "score B:47.0 W:34.5",
+    "moves": 81,
+    "temperature": 0.2,
+    "seconds": 49.2
+  },
+  {
+    "level": 8,
+    "game": 50,
+    "net_black": true,
+    "winner": "gnugo",
+    "reason": "score B:27.0 W:51.5",
+    "moves": 131,
+    "temperature": 0.2,
+    "seconds": 55.7
+  },
+  {
+    "level": 8,
+    "game": 51,
+    "net_black": false,
+    "winner": "net",
+    "reason": "score B:38.0 W:39.5",
+    "moves": 79,
+    "temperature": 0.2,
+    "seconds": 26.6
+  },
+  {
+    "level": 8,
+    "game": 52,
+    "net_black": true,
+    "winner": "gnugo",
+    "reason": "score B:30.0 W:31.5",
+    "moves": 63,
+    "temperature": 0.2,
+    "seconds": 74.0
+  },
+  {
+    "level": 8,
+    "game": 53,
+    "net_black": false,
+    "winner": "gnugo",
+    "reason": "score B:44.0 W:41.5",
+    "moves": 116,
+    "temperature": 0.2,
+    "seconds": 73.1
+  },
+  {
+    "level": 8,
+    "game": 54,
+    "net_black": true,
+    "winner": "net",
+    "reason": "score B:45.0 W:42.5",
+    "moves": 76,
+    "temperature": 0.2,
+    "seconds": 90.7
+  },
+  {
+    "level": 8,
+    "game": 55,
+    "net_black": false,
+    "winner": "gnugo",
+    "reason": "score B:45.0 W:42.5",
+    "moves": 75,
+    "temperature": 0.2,
+    "seconds": 42.1
+  },
+  {
+    "level": 8,
+    "game": 56,
+    "net_black": true,
+    "winner": "gnugo",
+    "reason": "score B:19.0 W:24.5",
+    "moves": 39,
+    "temperature": 0.2,
+    "seconds": 46.5
+  },
+  {
+    "level": 8,
+    "game": 57,
+    "net_black": false,
+    "winner": "net",
+    "reason": "score B:38.0 W:42.5",
+    "moves": 70,
+    "temperature": 0.2,
+    "seconds": 59.8
+  },
+  {
+    "level": 8,
+    "game": 58,
+    "net_black": true,
+    "winner": "gnugo",
+    "reason": "score B:38.0 W:48.5",
+    "moves": 89,
+    "temperature": 0.2,
+    "seconds": 59.4
+  },
+  {
+    "level": 8,
+    "game": 59,
+    "net_black": false,
+    "winner": "gnugo",
+    "reason": "score B:47.0 W:40.5",
+    "moves": 104,
+    "temperature": 0.2,
+    "seconds": 70.4
+  },
+  {
+    "level": 8,
+    "game": 60,
+    "net_black": true,
+    "winner": "net",
+    "reason": "score B:50.0 W:37.5",
+    "moves": 81,
+    "temperature": 0.2,
+    "seconds": 42.7
+  },
+  {
+    "level": 8,
+    "game": 61,
+    "net_black": false,
+    "winner": "gnugo",
+    "reason": "score B:37.0 W:33.5",
+    "moves": 72,
+    "temperature": 0.2,
+    "seconds": 39.3
+  },
+  {
+    "level": 8,
+    "game": 62,
+    "net_black": true,
+    "winner": "net",
+    "reason": "score B:52.0 W:24.5",
+    "moves": 49,
+    "temperature": 0.2,
+    "seconds": 26.5
+  },
+  {
+    "level": 8,
+    "game": 63,
+    "net_black": false,
+    "winner": "gnugo",
+    "reason": "score B:44.0 W:42.5",
+    "moves": 100,
+    "temperature": 0.2,
+    "seconds": 43.0
+  }
+]
