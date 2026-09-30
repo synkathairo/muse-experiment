@@ -13,6 +13,7 @@
 
 use wasm_bindgen::prelude::*;
 use weiqi_engine::{
+    bot,
     features,
     infer::Net,
     mcts::{self, Eval, Evaluator, SearchConfig},
@@ -177,6 +178,17 @@ impl WasmNet {
     /// arbitrate among them. Deterministic for a fixed position and sim count.
     pub fn search(&self, game: &WasmGame, simulations: u32) -> usize {
         search_best_move(game, self, simulations, 0.15)
+    }
+
+    /// The bot's non-search move: one forward pass, then
+    /// [`weiqi_engine::bot::policy_move`] — illegal moves masked, own-eye
+    /// fills excluded, `temperature` <= 0 gives the argmax. `seed` should be
+    /// fresh randomness per call (the page passes 64 bits from Math.random).
+    /// Deterministic given the seed.
+    pub fn sample_move(&self, game: &WasmGame, temperature: f32, seed: u64) -> usize {
+        let feat = features::encode(&game.inner);
+        let out = self.inner.forward(&feat);
+        bot::policy_move(&game.inner, &out.policy, temperature, seed)
     }
 }
 

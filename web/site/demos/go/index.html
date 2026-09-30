@@ -370,16 +370,18 @@
 	}
 
 	function sampleMove(policy, mask) {
-		const legal = [];
-		for (let i = 0; i < 82; i++) {
-			if (!mask[i]) continue;
-			// Never fill our own eyes: legal but pointless, and the terminal
-			// win/loss reward never taught the net to avoid it. Pass (81) is
-			// always kept. Guarded for stale cached WASM (cf. territory()).
-			if (i < 81 && typeof game.is_eye_fill === 'function' && game.is_eye_fill(i)) continue;
-			legal.push(i);
+		// Thin wrapper: the real move selection lives in Rust
+		// (engine/src/bot.rs) so other frontends (e.g. a GTP binary) share
+		// it. Guarded for stale cached WASM (cf. territory()).
+		if (net && typeof net.sample_move === 'function') {
+			const seed = (BigInt(Math.floor(Math.random() * 0x100000000)) << 32n) |
+				BigInt(Math.floor(Math.random() * 0x100000000));
+			return net.sample_move(game, temperature, seed);
 		}
-		if (!legal.length) return 81; // cannot happen (pass is always legal)
+		// Fallback for a stale WASM without the binding: previous JS logic.
+		const legal = [];
+		for (let i = 0; i < 82; i++) if (mask[i]) legal.push(i);
+		if (!legal.length) return 81;
 		if (temperature <= 0) {
 			let best = legal[0], bp = -1;
 			for (const i of legal) if (policy[i] > bp) { bp = policy[i]; best = i; }
