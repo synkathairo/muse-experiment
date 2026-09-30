@@ -77,7 +77,7 @@ class GTPEngine:
         )
 
     def genmove(self, color):
-        mask = selfplay.legal_mask(self.board, color)
+        mask = selfplay.bot_mask(self.board, color)
         planes = self._encode(color)
         with torch.no_grad():
             logits, _ = self.model(torch.from_numpy(planes).unsqueeze(0))

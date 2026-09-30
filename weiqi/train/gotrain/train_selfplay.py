@@ -380,7 +380,7 @@ def evaluate(policy, opponent_fn, n_games, device, seed=12345, max_plies=None,
     wins = 0
     played = 0
     while played < n_games:
-        masks = env.legal_masks_learner()
+        masks = env.action_masks_learner()
         obs_t = torch.from_numpy(obs).to(device)
         masks_t = torch.from_numpy(masks).to(device)
         actions = greedy_actions(policy, obs_t, masks_t).cpu().numpy()
@@ -801,7 +801,7 @@ def main():
         for t in range(T):
             for i in range(N):
                 ep_steps[i].append(t)
-            masks = env.legal_masks_learner()
+            masks = env.action_masks_learner()
             obs_t = torch.from_numpy(obs).to(device)
             masks_t = torch.from_numpy(masks).to(device)
             # Dirichlet opening noise for both colors' early plies: env.plies

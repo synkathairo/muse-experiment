@@ -182,7 +182,7 @@ def test_tactical_env_obs_shape():
     assert env.n_planes == 13
     obs = env.reset()
     assert obs.shape == (2, 13, 9, 9)
-    masks = env.legal_masks_learner()
+    masks = env.action_masks_learner()
     acts = np.array([int(np.flatnonzero(m)[0]) for m in masks])
     obs2, _, _, _, _ = env.step(acts)
     assert obs2.shape == (2, 13, 9, 9)

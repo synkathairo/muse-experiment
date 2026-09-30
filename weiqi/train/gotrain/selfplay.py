@@ -191,6 +191,28 @@ def legal_mask(board, color):
     return mask
 
 
+def bot_mask(board, color):
+    """bool[82]: action mask for bot move selection — legal moves minus
+    own-eye fills (see Board.is_eye_fill). Pass (81) is always kept.
+
+    Eye-filling is legal but strictly dominated, and the terminal win/loss
+    reward never teaches the net to avoid it, so the bot's world excludes
+    it — like the suicide ban. This keeps the training actors, the Python
+    MCTS, and the GTP engines on the same action space as the demo's Rust
+    bot (weiqi/engine/src/bot.rs). True legality stays in legal_mask.
+    """
+    mask = legal_mask(board, color)
+    n = board.size
+    is_eye_fill = board.is_eye_fill  # local binding: rollout hot loop
+    for r in range(n):
+        base = r * n
+        for c in range(n):
+            i = base + c
+            if mask[i] and is_eye_fill(r, c, color):
+                mask[i] = False
+    return mask
+
+
 def observe(board, color):
     """(6,9,9) float32 planes from `color`-to-move's perspective (PLAN.md §3)."""
     return features.encode(
@@ -401,7 +423,7 @@ class SelfPlayGo:
             i = int(i)
             color = opponent(self.learner_color[i])
             obs[k] = self._encode(self.boards[i], color)
-            masks[k] = legal_mask(self.boards[i], color)
+            masks[k] = bot_mask(self.boards[i], color)
         opp_actions = np.asarray(
             self.opponent_fn(obs, masks, self.plies[idxs]), dtype=np.int64)
         assert opp_actions.shape == (len(idxs),)
@@ -447,10 +469,11 @@ class SelfPlayGo:
         obs = self._observe_learner(np.arange(self.num_envs))
         return obs, rewards, self.done.copy(), terms, ep_lens
 
-    def legal_masks_learner(self):
-        """(num_envs,82) bool legal masks for the learner's current turn."""
+    def action_masks_learner(self):
+        """(num_envs,82) bool action masks for the learner's current turn:
+        legal moves minus own-eye fills (see bot_mask)."""
         masks = np.zeros((self.num_envs, N_MOVES), dtype=bool)
         for i in range(self.num_envs):
             if not self.done[i]:
-                masks[i] = legal_mask(self.boards[i], int(self.learner_color[i]))
+                masks[i] = bot_mask(self.boards[i], int(self.learner_color[i]))
         return masks

@@ -160,7 +160,7 @@ class TestEnvLegality(unittest.TestCase):
         total_steps = 0
         finished = 0
         while finished < 8 and total_steps < 4000:
-            masks = env.legal_masks_learner()
+            masks = env.action_masks_learner()
             # pass is always legal -> mask never empty
             self.assertTrue(masks[:, 81].all())
             actions = np.array([rng.choice(np.flatnonzero(m)) for m in masks])
@@ -190,7 +190,7 @@ class TestEnvLegality(unittest.TestCase):
         obs = env.reset()
         rng = np.random.default_rng(2)
         for _ in range(5):
-            masks = env.legal_masks_learner()
+            masks = env.action_masks_learner()
             actions = np.array([rng.choice(np.flatnonzero(m)) for m in masks])
             obs, _, dones, _, _ = env.step(actions)
             if np.any(dones):
@@ -456,7 +456,7 @@ class TestScoreReward(unittest.TestCase):
         finished = 0
         total_steps = 0
         while finished < 16 and total_steps < 8000:
-            masks = env.legal_masks_learner()
+            masks = env.action_masks_learner()
             actions = np.array([rng.choice(np.flatnonzero(m)) for m in masks])
             obs, rewards, dones, terms, lens = env.step(actions)
             for i in np.where(dones)[0]:
@@ -510,7 +510,7 @@ class TestPositionArchive(unittest.TestCase):
         env.reset()
         # Play a few moves to get a midgame position
         for _ in range(10):
-            masks = env.legal_masks_learner()
+            masks = env.action_masks_learner()
             actions = masks.argmax(axis=1)  # greedy legal
             obs, _, dones, _, _ = env.step(actions)
             if dones.any():
@@ -529,7 +529,7 @@ class TestPositionArchive(unittest.TestCase):
         # Board should differ from fresh (very likely, given random archive pos)
         # More importantly: the restored obs must be the learner's turn
         # (legal moves exist for the learner color)
-        masks = env.legal_masks_learner()
+        masks = env.action_masks_learner()
         self.assertTrue(masks[1].any(), "restored position has no legal moves for learner")
         
     def test_archive_empty_falls_back(self):
@@ -598,3 +598,58 @@ class TestWideArchitectures(unittest.TestCase):
             net.global_fc.weight.data.copy_(orig)
         # Outputs should differ (global path contributes)
         self.assertFalse(torch.allclose(out1, out2))
+
+
+class EyeFillTest(unittest.TestCase):
+    """Own-eye exclusion: Board.is_eye_fill and selfplay.bot_mask."""
+
+    def eye_position(self):
+        # Black wall around (4,4); black to move. (4,4) is black's eye.
+        b = Board()
+        for r, c in [(3, 4), (5, 4), (4, 3), (4, 5)]:
+            b.grid[r][c] = BLACK
+        b.to_play = BLACK
+        return b
+
+    def test_is_eye_fill(self):
+        b = self.eye_position()
+        self.assertTrue(b.is_eye_fill(4, 4, BLACK))
+        self.assertFalse(b.is_eye_fill(3, 3, BLACK))  # empty neighbors
+        self.assertFalse(b.is_eye_fill(3, 4, BLACK))  # occupied
+        self.assertFalse(b.is_eye_fill(4, 4, WHITE))  # wrong color
+        c = Board()  # corner: off-board counts as friendly edge
+        c.grid[0][1] = BLACK
+        c.grid[1][0] = BLACK
+        c.to_play = BLACK
+        self.assertTrue(c.is_eye_fill(0, 0, BLACK))
+
+    def test_bot_mask_excludes_eye_fill_keeps_rest(self):
+        from gotrain.selfplay import bot_mask
+        b = self.eye_position()
+        self.assertTrue(legal_mask(b, BLACK)[4 * 9 + 4])  # truly legal...
+        m = bot_mask(b, BLACK)
+        self.assertFalse(m[4 * 9 + 4])  # ...but excluded from the bot's world
+        self.assertTrue(m[81])  # pass always kept
+        self.assertTrue(m[0])  # ordinary empty point kept
+
+    def test_bot_mask_keeps_capture_inside_territory(self):
+        # Killing an invasion always has an opponent neighbor, so the
+        # capturing move must survive the filter.
+        from gotrain.selfplay import bot_mask
+        b = Board()
+        for r, c in [(3, 4), (5, 4), (4, 3)]:
+            b.grid[r][c] = BLACK
+        b.grid[4][4] = WHITE  # one liberty left at (4,5)
+        b.to_play = BLACK
+        self.assertFalse(b.is_eye_fill(4, 5, BLACK))  # neighbor (4,4) white
+        m = bot_mask(b, BLACK)
+        self.assertTrue(m[4 * 9 + 5])  # the capture stays available
+
+    def test_action_masks_learner_excludes_eye_fill(self):
+        env = SelfPlayGo(num_envs=1, seed=0)
+        env.boards[0] = self.eye_position()
+        env.learner_color[0] = BLACK
+        env.done[0] = False
+        m = env.action_masks_learner()[0]
+        self.assertFalse(m[4 * 9 + 4])
+        self.assertTrue(m[81])

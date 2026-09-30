@@ -182,7 +182,7 @@ class TestLabelPlumbing(unittest.TestCase):
         for t in range(T):
             for i in range(2):
                 ep_steps[i].append(t)
-            masks = env.legal_masks_learner()
+            masks = env.action_masks_learner()
             acts = np.array([np.random.choice(np.flatnonzero(masks[i]))
                              for i in range(2)])
             _, _, dones, _, _ = env.step(acts)

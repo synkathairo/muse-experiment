@@ -163,6 +163,27 @@ class Board:
         # one. (Passes are exempt — they create no new board — and stay legal.)
         return board_t not in self.history
 
+    def is_eye_fill(self, r, c, color):
+        """True if `color` playing at (r, c) fills its own eye: the point is
+        empty and every orthogonal neighbor is `color` (or off the board).
+        Such moves are legal but strictly dominated — no capture is possible
+        (that needs an adjacent opponent group), the point is already
+        uninvadable (opponent playing there would be suicide), and it costs
+        a liberty. Mirrors weiqi/engine's Game::is_self_eye_fill."""
+        n = self.size
+        if self.grid[r][c] != EMPTY:
+            return False
+        grid = self.grid
+        if r > 0 and grid[r - 1][c] != color:
+            return False
+        if r < n - 1 and grid[r + 1][c] != color:
+            return False
+        if c > 0 and grid[r][c - 1] != color:
+            return False
+        if c < n - 1 and grid[r][c + 1] != color:
+            return False
+        return True
+
     def play(self, move, color):
         """Apply a move. move = (r, c) or None for pass. Returns True if legal."""
         if move is None:

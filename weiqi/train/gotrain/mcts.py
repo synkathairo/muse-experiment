@@ -82,7 +82,7 @@ class Searcher:
         root.board = _clone(board)
         root.passes = passes
         root.to_move = board.to_play
-        root.legal = selfplay.legal_mask(root.board, root.to_move)
+        root.legal = selfplay.bot_mask(root.board, root.to_move)
         if int(root.legal.sum()) <= 1:  # only pass is legal
             return PASS
         nodes = [root]
@@ -163,7 +163,7 @@ class Searcher:
         values = values.float().cpu().numpy().ravel()
         out = []
         for node, lg, v in zip(leaves, logits, values, strict=True):
-            node.legal = selfplay.legal_mask(node.board, node.to_move)
+            node.legal = selfplay.bot_mask(node.board, node.to_move)
             l = lg[node.legal]
             l = l - l.max()
             e = np.exp(l)
