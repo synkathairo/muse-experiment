@@ -238,6 +238,29 @@ impl Game {
         self.to_move = next_to_move;
     }
 
+    /// True if the side to move playing at `p` would fill one of its own
+    /// eyes: `p` is empty and every orthogonal neighbor is the side's own
+    /// stone (or off the board). Such moves are legal but essentially never
+    /// useful — they can only remove liberties/eyes, and they cannot capture
+    /// (a capture needs an orthogonally adjacent opponent group, which the
+    /// all-friendly-neighbors condition rules out). Killing an invasion
+    /// inside your own territory always has an opponent neighbor, so it is
+    /// unaffected. The demo's bot filters these from move selection: the
+    /// terminal win/loss reward almost never punishes eye-filling (it is
+    /// score-neutral in area scoring unless the opponent captures the
+    /// eyeless group), so self-play never learns to avoid it.
+    pub fn is_self_eye_fill(&self, p: u8) -> bool {
+        let i = p as usize;
+        if i >= N_POINTS || self.board[i].is_some() {
+            return false;
+        }
+        let me = self.to_move;
+        neighbors(p)
+            .into_iter()
+            .flatten()
+            .all(|nb| self.board[nb as usize] == Some(me))
+    }
+
     /// Side to move.
     pub fn to_move(&self) -> Color {
         self.to_move
@@ -792,6 +815,35 @@ mod tests {
         h.place_setup_stones(&[40], Color::Black, Color::White);
         assert!(h.play(Move::Play(0)).is_ok());
         assert_eq!(h.stone_at(0), Some(Color::White));
+    }
+
+    #[test]
+    fn is_self_eye_fill_detects() {
+        // Black wall around tengen (40): neighbors 31/49/39/41.
+        let mut g = Game::new();
+        for &p in &[31u8, 49, 39, 41] {
+            g.place_setup_stones(&[p], Color::Black, Color::Black);
+        }
+        assert!(g.is_self_eye_fill(40));
+        // A point with a non-friendly neighbor is not an eye fill.
+        g.place_setup_stones(&[0], Color::White, Color::Black);
+        assert!(!g.is_self_eye_fill(1)); // neighbor 0 is white
+        assert!(!g.is_self_eye_fill(2)); // neighbors empty, not own stones
+        // Occupied and out-of-range points are never eye fills.
+        assert!(!g.is_self_eye_fill(31));
+        assert!(!g.is_self_eye_fill(81));
+        assert!(!g.is_self_eye_fill(200));
+        // Corner: off-board counts as friendly edge.
+        let mut h = Game::new();
+        h.place_setup_stones(&[1, 9], Color::Black, Color::Black);
+        assert!(h.is_self_eye_fill(0));
+        // The predicate is relative to the side to move.
+        let mut w = Game::new();
+        w.place_setup_stones(&[1, 9], Color::White, Color::White);
+        assert!(w.is_self_eye_fill(0));
+        let mut w2 = Game::new();
+        w2.place_setup_stones(&[1, 9], Color::White, Color::Black);
+        assert!(!w2.is_self_eye_fill(0));
     }
 
     #[test]

@@ -371,7 +371,15 @@
 
 	function sampleMove(policy, mask) {
 		const legal = [];
-		for (let i = 0; i < 82; i++) if (mask[i]) legal.push(i);
+		for (let i = 0; i < 82; i++) {
+			if (!mask[i]) continue;
+			// Never fill our own eyes: legal but pointless, and the terminal
+			// win/loss reward never taught the net to avoid it. Pass (81) is
+			// always kept. Guarded for stale cached WASM (cf. territory()).
+			if (i < 81 && typeof game.is_eye_fill === 'function' && game.is_eye_fill(i)) continue;
+			legal.push(i);
+		}
+		if (!legal.length) return 81; // cannot happen (pass is always legal)
 		if (temperature <= 0) {
 			let best = legal[0], bp = -1;
 			for (const i of legal) if (policy[i] > bp) { bp = policy[i]; best = i; }

@@ -123,6 +123,14 @@ impl WasmGame {
             .place_setup_stones(&pts, Color::Black, Color::White);
     }
 
+    /// True if the side to move playing at `idx` would fill its own eye.
+    /// The demo's move sampler skips such moves so the bot can't kill its
+    /// own groups in the endgame. Guarded like territory(): stale cached
+    /// WASM predates this binding.
+    pub fn is_eye_fill(&self, idx: usize) -> bool {
+        idx < 81 && self.inner.is_self_eye_fill(idx as u8)
+    }
+
     /// Per-point ownership (81 bytes): 0 = neutral, 1 = black, 2 = white.
     /// Counts agree with the area scores (minus komi). For end-of-game
     /// territory shading.
@@ -200,6 +208,8 @@ pub fn search_best_move(
     let cfg = SearchConfig {
         simulations: simulations.max(1),
         dirichlet_eps,
+        // The bot never fills its own eyes, in search or in direct sampling.
+        filter_self_eye_fill: true,
         ..SearchConfig::default()
     };
     mcts::search(&game.inner, net, &cfg)

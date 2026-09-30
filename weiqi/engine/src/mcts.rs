@@ -9,7 +9,7 @@
 //! Deterministic given the seed in [`SearchConfig`]: the only randomness is
 //! root Dirichlet noise and optional temperature sampling.
 
-use crate::rules::{Color, Game, Move, N_MOVES};
+use crate::rules::{Color, Game, Move, N_MOVES, N_POINTS};
 
 /// Policy priors (index 81 = pass) plus a value estimate, both from the
 /// side-to-move's perspective; value in [-1, 1].
@@ -39,6 +39,10 @@ pub struct SearchConfig {
     pub temperature: f32,
     /// RNG seed (noise + sampling). Fixed default = deterministic.
     pub seed: u64,
+    /// Skip moves that fill the mover's own eye (see
+    /// [`Game::is_self_eye_fill`]) when expanding nodes. The demo enables
+    /// this; default off keeps the core search neutral for other users.
+    pub filter_self_eye_fill: bool,
 }
 
 impl Default for SearchConfig {
@@ -50,6 +54,7 @@ impl Default for SearchConfig {
             dirichlet_eps: 0.0,
             temperature: 0.0,
             seed: 0x9E3779B97F4A7C15,
+            filter_self_eye_fill: false,
         }
     }
 }
@@ -198,6 +203,15 @@ pub fn search<E: Evaluator>(game: &Game, eval: &E, cfg: &SearchConfig) -> usize 
                 let mut prior_sum = 0.0f32;
                 for (i, &ok) in legal.iter().enumerate() {
                     if ok {
+                        // Eye-filling moves are legal but never useful; the
+                        // demo filters them so the bot can't kill its own
+                        // groups in the endgame. Pass (81) always survives.
+                        if cfg.filter_self_eye_fill
+                            && i < N_POINTS
+                            && node.game.is_self_eye_fill(i as u8)
+                        {
+                            continue;
+                        }
                         let p = ev.policy[i].max(0.0);
                         prior_sum += p;
                         children.push(Child {
@@ -466,6 +480,49 @@ mod tests {
             ..Default::default()
         };
         let m = search(&g, &MaterialEval, &cfg);
+        assert!(g.legal_moves()[m]);
+    }
+
+    #[test]
+    fn filter_self_eye_fill_blocks_endgame_blunder() {
+        // Black wall around tengen (40); black to move. A peaked prior puts
+        // all mass on filling the eye at 40.
+        let mut g = Game::new();
+        for &p in &[31u8, 49, 39, 41] {
+            g.place_setup_stones(&[p], Color::Black, Color::Black);
+        }
+        assert_eq!(g.to_move(), Color::Black);
+        struct EyeFillPrior;
+        impl Evaluator for EyeFillPrior {
+            fn evaluate(&self, game: &Game) -> Eval {
+                let mut policy = [0.0f32; N_MOVES];
+                let legal = game.legal_moves();
+                for i in 0..N_MOVES {
+                    policy[i] = if i == 40 {
+                        1.0
+                    } else if legal[i] {
+                        0.001
+                    } else {
+                        0.0
+                    };
+                }
+                Eval { policy, value: 0.0 }
+            }
+        }
+        // Without the filter, search plays the peaked eye-fill.
+        let cfg_off = SearchConfig {
+            simulations: 50,
+            ..Default::default()
+        };
+        assert_eq!(search(&g, &EyeFillPrior, &cfg_off), 40);
+        // With the filter, it must pick something else.
+        let cfg_on = SearchConfig {
+            simulations: 50,
+            filter_self_eye_fill: true,
+            ..Default::default()
+        };
+        let m = search(&g, &EyeFillPrior, &cfg_on);
+        assert_ne!(m, 40);
         assert!(g.legal_moves()[m]);
     }
 
