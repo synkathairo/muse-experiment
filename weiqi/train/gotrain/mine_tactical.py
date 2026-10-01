@@ -22,12 +22,47 @@ from __future__ import annotations
 import json
 import os
 import sys
-from typing import Any
+from typing import TypedDict
 
 import numpy as np
 import torch
 
 from .rules import Board, EMPTY, BLACK, WHITE, opponent
+
+
+class CorrectMove(TypedDict):
+    move: int  # move index 0..80
+    kind: str  # "capture" | "escape"
+
+
+class PositionRecord(TypedDict, total=False):
+    """Serialisable mined-position record (JSON round-trips).
+
+    `snapshot()` fills the base keys; the mining passes add the rest.
+    `total=False` because a fresh snapshot has no mined keys yet.
+    """
+    grid: str  # hex of the 81 raw board bytes
+    last_move: list[int] | None
+    ko: list[int] | None
+    to_move: str  # "b" | "w"
+    correct: list[CorrectMove]
+    baseline_move: int
+    baseline_blunder: bool
+    source: str  # "selfplay" | "gnugo-loss"
+
+
+class _BlunderSplit(TypedDict):
+    n: int
+    blunders: int
+    rate: float
+
+
+class BlunderReport(TypedDict):
+    n: int
+    blunders: int
+    rate: float
+    capture: _BlunderSplit
+    escape: _BlunderSplit
 from .selfplay import legal_mask, observe
 from . import tactical as tacmod
 
@@ -100,7 +135,7 @@ def greedy_move(model: torch.nn.Module, board: Board, color: int,
     return int(np.argmax(logits))
 
 
-def snapshot(board: Board, color: int) -> dict[str, Any]:
+def snapshot(board: Board, color: int) -> PositionRecord:
     """Serialisable position record (no history)."""
     raw = bytes(b for row in board.grid for b in row)
     return {
@@ -111,21 +146,23 @@ def snapshot(board: Board, color: int) -> dict[str, Any]:
     }
 
 
-def restore(rec: dict[str, Any]) -> tuple[Board, int]:
+def restore(rec: PositionRecord) -> tuple[Board, int]:
     """Rebuild a Board from a snapshot record (empty history — see caveat)."""
     raw = bytes.fromhex(rec["grid"])
     b = Board(N)
     it = iter(raw)
     b.grid = [[next(it) for _ in range(N)] for _ in range(N)]
-    b.last_move = tuple(rec["last_move"]) if rec["last_move"] else None
-    b.ko = tuple(rec["ko"]) if rec["ko"] else None
+    lm = rec["last_move"]
+    b.last_move = (lm[0], lm[1]) if lm else None
+    ko = rec["ko"]
+    b.ko = (ko[0], ko[1]) if ko else None
     color = BLACK if rec["to_move"] == "b" else WHITE
     return b, color
 
 
 def mine_selfplay(model_ckpt: str, n_games: int = 40, seed: int = 0,
                   temperature: float = 0.7,
-                  max_positions: int = 500) -> list[dict[str, Any]]:
+                  max_positions: int = 500) -> list[PositionRecord]:
     """Play the frozen 6-plane baseline vs itself (sampled), mining tactical
     positions at every turn. Returns a list of position records."""
     from .net import GoNet
@@ -137,7 +174,7 @@ def mine_selfplay(model_ckpt: str, n_games: int = 40, seed: int = 0,
     model.load_state_dict(to_gonet_state_dict(sd))
     model.eval()
     rng = np.random.default_rng(seed)
-    positions: list[dict[str, Any]] = []
+    positions: list[PositionRecord] = []
     seen: set = set()
     for _ in range(n_games):
         b = Board(N)
@@ -183,14 +220,14 @@ def mine_selfplay(model_ckpt: str, n_games: int = 40, seed: int = 0,
 
 def mine_vs_gnugo(net_argv: list[str], gnugo_argv: list[str],
                   n_games: int = 8,
-                  max_positions: int = 500) -> list[dict[str, Any]]:
+                  max_positions: int = 500) -> list[PositionRecord]:
     """Play the frozen baseline (as a GTP subprocess) vs GNU Go, mining
     tactical positions from the net's turns in games the net LOST."""
     sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)) or ".")
     from eval_vs_gnugo import GTPClient
     from gotrain.gtp import from_gtp_vertex
 
-    positions: list[dict[str, Any]] = []
+    positions: list[PositionRecord] = []
     seen: set = set()
     for gi in range(n_games):
         gnugo = GTPClient(gnugo_argv)
@@ -282,7 +319,7 @@ def load_model_for_eval(checkpoint: str) -> tuple[torch.nn.Module, bool]:
 
 
 def eval_blunders(checkpoint: str,
-                  positions: list[dict[str, Any]]) -> dict[str, Any]:
+                  positions: list[PositionRecord]) -> BlunderReport:
     """Blunder rate of `checkpoint` on mined positions.
 
     Returns dict with n, blunders, rate, and capture/escape splits.

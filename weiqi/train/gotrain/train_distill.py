@@ -23,7 +23,6 @@ from __future__ import annotations
 
 import argparse
 import time
-from typing import Any
 
 import numpy as np
 import torch
@@ -69,7 +68,7 @@ def load_dataset(path: str) -> dict[str, torch.Tensor | None]:
 def evaluate(net: NetT, obs: torch.Tensor, policy: torch.Tensor,
              value: torch.Tensor | None, mask: torch.Tensor,
              device: torch.device | str, batch_size: int = 1024
-             ) -> dict[str, Any]:
+             ) -> dict[str, float | None]:
     """Compute CE, top-1, KL, value MSE on the full dataset."""
     net.eval()
     total_ce, total_kl, total_mse = 0.0, 0.0, 0.0
@@ -109,7 +108,7 @@ def evaluate(net: NetT, obs: torch.Tensor, policy: torch.Tensor,
             total_ce += ce.item() * x.shape[0]
             total_kl += kl.item() * x.shape[0]
 
-    out: dict[str, Any] = {
+    out: dict[str, float | None] = {
         "ce": total_ce / n,
         "kl": total_kl / n,
         "top1": top1_correct / total,
@@ -196,7 +195,7 @@ def main() -> None:
     val_data = {k: _split_v(v) for k, v in data.items()}
     print(f"train={len(train_idx)} val={len(val_idx)}")
 
-    results: dict[str, Any] = {}
+    results: dict[str, dict[str, float | None]] = {}
     for name in args.archs:
         print(f"\n=== {name} ===")
         net = ARCHITECTURES[name]().to(device)
