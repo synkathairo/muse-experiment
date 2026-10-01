@@ -35,20 +35,26 @@ All observations are encoded from the side-to-move's perspective (plane 0 = move
 own stones), exactly as gotrain.features.encode specifies, so one policy net serves
 both colors and both roles.
 """
+from __future__ import annotations
+
+from collections.abc import Callable
 
 import numpy as np
 
 from . import features
 from .rules import BLACK, WHITE, EMPTY, Board, opponent
 
-N = 9
-N_MOVES = 82
-PASS = features.move_to_index(None)  # 81
-KOMI = 7.5
-MAX_PLIES = 3 * N * N  # 243; safety cap guaranteeing termination
+N: int = 9
+N_MOVES: int = 82
+PASS: int = features.move_to_index(None)  # 81
+KOMI: float = 7.5
+MAX_PLIES: int = 3 * N * N  # 243; safety cap guaranteeing termination
+
+# Opponent policy: (obs (B,P,9,9), masks (B,82), plies (B,) | None) -> move idx (B,).
+OpponentFn = Callable[[np.ndarray, np.ndarray, np.ndarray | None], np.ndarray]
 
 
-def set_komi(k):
+def set_komi(k: float) -> None:
     """Set the komi used by score()/winner() for subsequent games.
 
     Called once at trainer startup (--train-komi). The net itself is
@@ -61,7 +67,7 @@ def set_komi(k):
 # ---------------------------------------------------------------------------
 # Tromp-Taylor area scoring (+ ownership labels for the auxiliary heads)
 # ---------------------------------------------------------------------------
-def _score_and_ownership(board):
+def _score_and_ownership(board: Board) -> tuple[tuple[float, float], np.ndarray]:
     """Shared Tromp-Taylor core.
 
     Returns ((black_score, white_score), own) where own is an (n, n) int8 grid:
@@ -93,8 +99,8 @@ def _score_and_ownership(board):
             if board.grid[r][c] != EMPTY or seen[r][c]:
                 continue
             # flood-fill one empty region, tracking bordering colors
-            cells = []
-            borders = set()
+            cells: list[tuple[int, int]] = []
+            borders: set[int] = set()
             stack = [(r, c)]
             seen[r][c] = True
             while stack:
@@ -123,7 +129,7 @@ def _score_and_ownership(board):
     return (black_stones + black_terr, white_stones + white_terr + KOMI), own
 
 
-def score(board):
+def score(board: Board) -> tuple[float, float]:
     """Return (black_score, white_score) with komi added to White.
 
     Tromp-Taylor: score = stones on board + empty points whose bordering stones
@@ -133,7 +139,7 @@ def score(board):
     return (b, w)
 
 
-def ownership_labels(board):
+def ownership_labels(board: Board) -> np.ndarray:
     """(81,) float32 ownership targets in ABSOLUTE colors: +1 black owns,
     -1 white owns, 0 neutral. See _score_and_ownership for the dead-stone
     caveat. Use to_learner_perspective() before training — the net observes
@@ -142,14 +148,16 @@ def ownership_labels(board):
     return own.reshape(-1).astype(np.float32)
 
 
-def margin_label(board):
+def margin_label(board: Board) -> float:
     """float: black_score - white_score (komi included), Tromp-Taylor area
     scoring. Absolute colors; convert with to_learner_perspective()."""
     (b, w), _ = _score_and_ownership(board)
     return float(b - w)
 
 
-def to_learner_perspective(own_abs, margin_abs, learner_color):
+def to_learner_perspective(
+    own_abs: np.ndarray, margin_abs: float, learner_color: int
+) -> tuple[np.ndarray, float]:
     """Convert absolute ownership/margin labels to the learner's perspective,
     matching the observation encoding (plane 0 = side to move): +1 means a
     point owned by / score margin for the side to move."""
@@ -158,7 +166,7 @@ def to_learner_perspective(own_abs, margin_abs, learner_color):
     return -own_abs, -margin_abs
 
 
-def winner(board):
+def winner(board: Board) -> int:
     """BLACK, WHITE, or EMPTY (draw — impossible with half-integer komi, kept for safety)."""
     b, w = score(board)
     if b > w:
@@ -171,7 +179,7 @@ def winner(board):
 # ---------------------------------------------------------------------------
 # Observation / legality helpers
 # ---------------------------------------------------------------------------
-def legal_mask(board, color):
+def legal_mask(board: Board, color: int) -> np.ndarray:
     """bool[82]: legal moves for `color`. Pass (81) is always legal.
 
     Masking + renormalizing the policy over this mask guarantees no illegal move
@@ -191,7 +199,7 @@ def legal_mask(board, color):
     return mask
 
 
-def bot_mask(board, color):
+def bot_mask(board: Board, color: int) -> np.ndarray:
     """bool[82]: action mask for bot move selection — legal moves minus
     own-eye fills (see Board.is_eye_fill). Pass (81) is always kept.
 
@@ -213,7 +221,7 @@ def bot_mask(board, color):
     return mask
 
 
-def observe(board, color):
+def observe(board: Board, color: int) -> np.ndarray:
     """(6,9,9) float32 planes from `color`-to-move's perspective (PLAN.md §3)."""
     return features.encode(
         board.stones(color),
@@ -224,7 +232,7 @@ def observe(board, color):
     )
 
 
-def observe_tactical(board, color):
+def observe_tactical(board: Board, color: int) -> np.ndarray:
     """(13,9,9) float32 planes from `color`-to-move's perspective.
 
     Experimental (gotrain.tactical): the 6 locked planes plus 7 tactical
@@ -250,15 +258,17 @@ class PositionArchive:
     env invariant that observations are always the learner's turn.
     """
 
-    def __init__(self, max_size=10000):
-        self.max_size = max_size
-        self._positions = []  # list of (board, learner_color, plies, consec_passes)
+    def __init__(self, max_size: int = 10000) -> None:
+        self.max_size: int = max_size
+        # list of (board, learner_color, plies, consec_passes)
+        self._positions: list[tuple[Board, int, int, int]] = []
         self._rng = np.random.default_rng()
 
-    def __len__(self):
+    def __len__(self) -> int:
         return len(self._positions)
 
-    def add(self, board, learner_color, plies, consec_passes):
+    def add(self, board: Board, learner_color: int, plies: int,
+            consec_passes: int) -> None:
         """Archive a position. Drops oldest if at capacity (FIFO)."""
         import copy
         if len(self._positions) >= self.max_size:
@@ -270,7 +280,7 @@ class PositionArchive:
             int(consec_passes),
         ))
 
-    def sample(self):
+    def sample(self) -> tuple[Board, int, int, int] | None:
         """Return a random archived position, or None if empty."""
         if not self._positions:
             return None
@@ -303,25 +313,28 @@ class SelfPlayGo:
     Finished envs are NOT auto-reset: call reset(idxs) for dones before stepping.
     """
 
-    def __init__(self, num_envs=32, seed=0, max_plies=MAX_PLIES, opponent_fn=None,
-                 reward_mode="winloss", reward_scale=15.0, tactical=False):
-        self.num_envs = num_envs
-        self.max_plies = max_plies
-        self.opponent_fn = opponent_fn
-        self.reward_mode = reward_mode
-        self.reward_scale = reward_scale
-        self.tactical = tactical
-        self.n_planes = 13 if tactical else 6
+    def __init__(self, num_envs: int = 32, seed: int = 0,
+                 max_plies: int = MAX_PLIES,
+                 opponent_fn: OpponentFn | None = None,
+                 reward_mode: str = "winloss", reward_scale: float = 15.0,
+                 tactical: bool = False) -> None:
+        self.num_envs: int = num_envs
+        self.max_plies: int = max_plies
+        self.opponent_fn: OpponentFn | None = opponent_fn
+        self.reward_mode: str = reward_mode
+        self.reward_scale: float = reward_scale
+        self.tactical: bool = tactical
+        self.n_planes: int = 13 if tactical else 6
         self.rng = np.random.default_rng(seed)
-        self.boards = [Board(N) for _ in range(num_envs)]
-        self.learner_color = np.full(num_envs, BLACK, dtype=np.int64)
-        self.color_counter = np.zeros(num_envs, dtype=np.int64)  # alternates colors
-        self.plies = np.zeros(num_envs, dtype=np.int64)
-        self.consec_passes = np.zeros(num_envs, dtype=np.int64)
-        self.done = np.zeros(num_envs, dtype=bool)
+        self.boards: list[Board] = [Board(N) for _ in range(num_envs)]
+        self.learner_color: np.ndarray = np.full(num_envs, BLACK, dtype=np.int64)
+        self.color_counter: np.ndarray = np.zeros(num_envs, dtype=np.int64)  # alternates colors
+        self.plies: np.ndarray = np.zeros(num_envs, dtype=np.int64)
+        self.consec_passes: np.ndarray = np.zeros(num_envs, dtype=np.int64)
+        self.done: np.ndarray = np.zeros(num_envs, dtype=bool)
 
     # -- reset ---------------------------------------------------------------
-    def _new_game(self, i):
+    def _new_game(self, i: int) -> None:
         self.boards[i] = Board(N)
         # alternate the learner's color every episode: even counter -> Black
         self.learner_color[i] = BLACK if self.color_counter[i] % 2 == 0 else WHITE
@@ -334,7 +347,7 @@ class SelfPlayGo:
         if self.learner_color[i] == WHITE:
             self._opponent_move(np.array([i]))
 
-    def reset(self, idxs=None):
+    def reset(self, idxs: np.ndarray | None = None) -> np.ndarray:
         """Reset games; return learner-perspective obs for `idxs` (default: all)."""
         if idxs is None:
             idxs = np.arange(self.num_envs)
@@ -343,7 +356,8 @@ class SelfPlayGo:
             self._new_game(int(i))
         return self._observe_learner(idxs)
 
-    def reset_from_archive(self, idxs, archive):
+    def reset_from_archive(self, idxs: np.ndarray,
+                           archive: PositionArchive) -> tuple[np.ndarray, np.ndarray]:
         """Reset envs from archived midgame positions where available.
 
         For each idx, with probability handled by the caller, restores a random
@@ -371,19 +385,19 @@ class SelfPlayGo:
         return self._observe_learner(idxs), restored
 
     # -- internal move plumbing ----------------------------------------------
-    def _encode(self, board, color):
+    def _encode(self, board: Board, color: int) -> np.ndarray:
         """Learner/opponent observation: 6-plane or 13-plane per self.tactical."""
         if self.tactical:
             return observe_tactical(board, color)
         return observe(board, color)
 
-    def _observe_learner(self, idxs):
+    def _observe_learner(self, idxs: np.ndarray) -> np.ndarray:
         obs = np.zeros((len(idxs), self.n_planes, N, N), dtype=np.float32)
         for k, i in enumerate(idxs):
             obs[k] = self._encode(self.boards[int(i)], self.learner_color[int(i)])
         return obs
 
-    def _apply(self, i, move_idx, color):
+    def _apply(self, i: int, move_idx: int, color: int) -> bool:
         """Apply move_idx for color in env i. Returns True if the game ended."""
         board = self.boards[i]
         move = features.index_to_move(int(move_idx))
@@ -396,7 +410,7 @@ class SelfPlayGo:
             return True
         return False
 
-    def _reward(self, i):
+    def _reward(self, i: int) -> float:
         """Terminal reward from the learner's perspective (0 on draw).
 
         winloss: +/-1 (default). score: tanh(margin / reward_scale), where
@@ -412,7 +426,7 @@ class SelfPlayGo:
             return 0.0
         return 1.0 if w == self.learner_color[i] else -1.0
 
-    def _opponent_move(self, idxs):
+    def _opponent_move(self, idxs: np.ndarray) -> None:
         """Play the frozen-snapshot opponent's reply in envs `idxs` (its turn)."""
         idxs = np.asarray(idxs, dtype=np.int64)
         if len(idxs) == 0 or self.opponent_fn is None:
@@ -433,7 +447,9 @@ class SelfPlayGo:
                 self._apply(i, opp_actions[k], opponent(self.learner_color[i]))
 
     # -- main step -------------------------------------------------------------
-    def step(self, actions):
+    def step(self, actions: np.ndarray) -> tuple[np.ndarray, np.ndarray,
+                                                 np.ndarray, np.ndarray,
+                                                 np.ndarray]:
         """One learner move (+ opponent reply) per live env. See class docstring."""
         actions = np.asarray(actions, dtype=np.int64)
         assert actions.shape == (self.num_envs,)
@@ -469,7 +485,7 @@ class SelfPlayGo:
         obs = self._observe_learner(np.arange(self.num_envs))
         return obs, rewards, self.done.copy(), terms, ep_lens
 
-    def action_masks_learner(self):
+    def action_masks_learner(self) -> np.ndarray:
         """(num_envs,82) bool action masks for the learner's current turn:
         legal moves minus own-eye fills (see bot_mask)."""
         masks = np.zeros((self.num_envs, N_MOVES), dtype=bool)

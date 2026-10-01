@@ -9,33 +9,37 @@ Usage:
         --levels 1 3 5 --games 4 --out /tmp/gnugo_bench.json
 """
 
+from __future__ import annotations
+
 import argparse
 import json
 import shlex
 import subprocess
 import sys
 import time
+from typing import Any
 
 from gotrain import rules, selfplay
 from gotrain.gtp import from_gtp_vertex, gtp_color  # noqa: F401 (vertex parse)
 
-NET_COLORS = ("black", "white")
+NET_COLORS: tuple[str, str] = ("black", "white")
 
 
 class GTPClient:
-    def __init__(self, argv):
+    def __init__(self, argv: list[str]) -> None:
         self.proc = subprocess.Popen(
             argv, stdin=subprocess.PIPE, stdout=subprocess.PIPE,
             stderr=subprocess.DEVNULL, text=True, bufsize=1)
         assert self.proc.stdin is not None
         assert self.proc.stdout is not None
 
-    def command(self, cmd, timeout=180):
+    def command(self, cmd: str, timeout: int = 180) -> tuple[bool, str]:
         assert self.proc.stdin is not None
         assert self.proc.stdout is not None
         self.proc.stdin.write(cmd + "\n")
         self.proc.stdin.flush()
-        lines, data = [], []
+        lines: list[str] = []
+        data: list[str] = []
         start = time.time()
         while True:
             if time.time() - start > timeout:
@@ -57,7 +61,7 @@ class GTPClient:
         payload = "\n".join([first] + rest).strip()
         return ok, payload
 
-    def close(self):
+    def close(self) -> None:
         try:
             self.command("quit", timeout=10)
         except Exception:
@@ -65,14 +69,16 @@ class GTPClient:
         self.proc.terminate()
 
 
-def play_game(gnugo, net, net_is_black, move_timeout):
+def play_game(gnugo: GTPClient, net: GTPClient, net_is_black: bool,
+              move_timeout: int) -> tuple[str, str, int]:
     arbiter = rules.Board(9)
     for eng in (gnugo, net):
         eng.command("boardsize 9")
         eng.command("clear_board")
         eng.command("komi 7.5")
     passes, moves = 0, 0
-    winner, reason = None, ""
+    winner: str | None = None
+    reason = ""
     while moves < 250:
         black_to_move = (moves % 2 == 0)
         me = net if (black_to_move == net_is_black) else gnugo
@@ -116,7 +122,7 @@ def play_game(gnugo, net, net_is_black, move_timeout):
     return winner, reason, moves
 
 
-def play_one(task):
+def play_one(task: tuple[int, int, list[str], list[str], int, float]) -> dict[str, Any]:
     """Play one game with fresh GTP subprocesses. `task` is a plain tuple
     so it pickles across process boundaries for --jobs > 1."""
     level, gi, gnugo_argv, net_argv, move_timeout, temperature = task
@@ -142,14 +148,14 @@ def play_one(task):
         net.close()
 
 
-def _report(r, prefix=""):
+def _report(r: dict[str, Any], prefix: str = "") -> None:
     print(f"{prefix}level {r['level']} game {r['game']} "
           f"({'net' if r['net_black'] else 'gnugo'} black): "
           f"{r['winner']} wins [{r['reason']}] "
           f"({r['moves']} moves, {r['seconds']}s)", flush=True)
 
 
-def main():
+def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("--checkpoint", default=None,
                     help="torch checkpoint for the Python GTP engine "
@@ -179,7 +185,7 @@ def main():
         net_argv = [py, "-m", "gotrain.gtp", "--checkpoint", args.checkpoint,
                     "--temperature", str(args.temperature)]
 
-    tasks = []
+    tasks: list[tuple[int, int, list[str], list[str], int, float]] = []
     for level in args.levels:
         gnugo_argv = [args.gnugo, "--mode", "gtp", "--quiet",
                       "--boardsize", "9", "--chinese-rules",
@@ -189,7 +195,7 @@ def main():
             tasks.append((level, gi, gnugo_argv, net_argv,
                           move_timeout, args.temperature))
 
-    results = []
+    results: list[dict[str, Any]] = []
     if args.jobs <= 1:
         for t in tasks:
             r = play_one(t)

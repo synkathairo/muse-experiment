@@ -5,13 +5,15 @@ export order below. Architecture is the controlled variable of the whole
 nurture-vs-nature comparison (PLAN.md §3, "Architecture discipline").
 """
 
+from __future__ import annotations
+
 import torch
 import torch.nn as nn
 
 # Exact fp16 export order (PLAN.md §3). (state_dict key, shape). This list IS the
 # file format: flat float16 little-endian, no header, tensors written back to back
 # in this order, each in C-contiguous (row-major) layout.
-EXPORT_ORDER = [
+EXPORT_ORDER: list[tuple[str, tuple[int, ...]]] = [
     ("conv1.weight", (64, 6, 3, 3)),
     ("conv1.bias", (64,)),
     ("conv2.weight", (64, 64, 3, 3)),
@@ -33,13 +35,13 @@ EXPORT_ORDER = [
 ]
 
 # Locked total parameter count (PLAN.md §3). Asserted by tests/test_smoke.py.
-EXPECTED_PARAMS = 130522
+EXPECTED_PARAMS: int = 130522
 
 # Experimental 13-plane variant (gotrain.tactical) — NOT part of the locked
 # spec. Shares the trunk and both heads with GoNet; only the first convolution
 # takes 13 input channels instead of 6.
-TACTICAL_IN_PLANES = 13
-EXPORT_ORDER_TACTICAL = [
+TACTICAL_IN_PLANES: int = 13
+EXPORT_ORDER_TACTICAL: list[tuple[str, tuple[int, ...]]] = [
     ("conv1.weight", (64, 13, 3, 3)),
     ("conv1.bias", (64,)),
     ("conv2.weight", (64, 64, 3, 3)),
@@ -60,12 +62,12 @@ EXPORT_ORDER_TACTICAL = [
     ("val_fc2.bias", (1,)),
 ]
 # 130522 + 64*7*3*3 (the 7 extra input channels of conv1).
-EXPECTED_PARAMS_TACTICAL = 134554
+EXPECTED_PARAMS_TACTICAL: int = 134554
 
 # Move index 81 = pass; 0..80 = row-major board points (row 0 = top, col 0 = left).
-PASS_INDEX = 81
-N_POINTS = 81
-N_MOVES = 82
+PASS_INDEX: int = 81
+N_POINTS: int = 81
+N_MOVES: int = 82
 
 
 class GoNet(nn.Module):
@@ -76,7 +78,17 @@ class GoNet(nn.Module):
     Value head:  conv 64->1 (1x1) -> flatten -> linear 81->32 -> ReLU -> linear 32->1 -> tanh.
     """
 
-    def __init__(self):
+    conv1: nn.Conv2d
+    conv2: nn.Conv2d
+    conv3: nn.Conv2d
+    conv4: nn.Conv2d
+    pol_conv: nn.Conv2d
+    pol_fc: nn.Linear
+    val_conv: nn.Conv2d
+    val_fc1: nn.Linear
+    val_fc2: nn.Linear
+
+    def __init__(self) -> None:
         super().__init__()
         self.conv1 = nn.Conv2d(6, 64, kernel_size=3, padding=1)
         self.conv2 = nn.Conv2d(64, 64, kernel_size=3, padding=1)
@@ -88,7 +100,7 @@ class GoNet(nn.Module):
         self.val_fc1 = nn.Linear(81, 32)
         self.val_fc2 = nn.Linear(32, 1)
 
-    def features(self, x):
+    def features(self, x: torch.Tensor) -> torch.Tensor:
         """Trunk feature map (B,64,9,9) after conv4, before the heads.
 
         Param-neutral and export-neutral: adds no parameters and leaves
@@ -101,21 +113,21 @@ class GoNet(nn.Module):
         t = torch.relu(self.conv3(t))
         return torch.relu(self.conv4(t))
 
-    def forward(self, x):
+    def forward(self, x: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
         t = self.features(x)
         logits = self.pol_fc(self.pol_conv(t).flatten(1))
         v = torch.relu(self.val_fc1(self.val_conv(t).flatten(1)))
         value = torch.tanh(self.val_fc2(v)).squeeze(1)
         return logits, value
 
-    def param_count(self):
+    def param_count(self) -> int:
         return sum(p.numel() for p in self.parameters())
 
 
-def ordered_tensors(model):
+def ordered_tensors(model: GoNet) -> list[torch.Tensor]:
     """Return model tensors as a list in EXPORT_ORDER, verifying shapes."""
     sd = model.state_dict()
-    out = []
+    out: list[torch.Tensor] = []
     for key, shape in EXPORT_ORDER:
         t = sd[key]
         if tuple(t.shape) != shape:
@@ -133,15 +145,15 @@ class GoNetTactical(GoNet):
     kill test).
     """
 
-    def __init__(self):
+    def __init__(self) -> None:
         super().__init__()
         self.conv1 = nn.Conv2d(TACTICAL_IN_PLANES, 64, kernel_size=3, padding=1)
 
 
-def ordered_tensors_tactical(model):
+def ordered_tensors_tactical(model: GoNetTactical) -> list[torch.Tensor]:
     """Return model tensors as a list in EXPORT_ORDER_TACTICAL, verifying shapes."""
     sd = model.state_dict()
-    out = []
+    out: list[torch.Tensor] = []
     for key, shape in EXPORT_ORDER_TACTICAL:
         t = sd[key]
         if tuple(t.shape) != shape:

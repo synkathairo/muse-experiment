@@ -3,20 +3,16 @@
 Trains all four architectures (baseline, wide, pool, widepool) on
 (position -> human move) pairs and compares top-1 accuracy.
 
-Usage:
-    # 1. Build dataset from SGFs:
-    python -m gotrain.dataset --sgf /path/to/go9 --out data/goquest
-    # 2. Run diagnostic:
-    python -m gotrain.train_supervised_2x2 --data data/goquest --out /tmp/sup_2x2
-
-Citation: Go Quest 9x9 game records (Tanasa / Go Quest app), shared by
+Data: Go Quest 9x9 game records (Tanasa / Go Quest app), shared by
 Hiroshi Yamashita to the computer-go mailing list, Dec 28, 2015.
 """
+from __future__ import annotations
 
 import argparse
 import json
 import os
 import time
+from typing import Any
 
 import numpy as np
 import torch
@@ -25,7 +21,9 @@ import torch.nn.functional as F
 from .net import GoNet
 from .net_wide import GoNetWide, GoNetPool, GoNetWidePool
 
-ARCHS = {
+NetT = GoNet | GoNetWide | GoNetPool | GoNetWidePool
+
+ARCHS: dict[str, type[NetT]] = {
     "baseline": GoNet,
     "wide": GoNetWide,
     "pool": GoNetPool,
@@ -33,14 +31,15 @@ ARCHS = {
 }
 
 
-def load_split(data_dir, split):
+def load_split(data_dir: str, split: str) -> tuple[torch.Tensor, torch.Tensor]:
     X = np.load(os.path.join(data_dir, f"{split}_x.npy"))
     y = np.load(os.path.join(data_dir, f"{split}_y.npy"))
     return torch.from_numpy(X), torch.from_numpy(y).long()
 
 
 @torch.no_grad()
-def evaluate(net, X, y, device, batch_size=2048):
+def evaluate(net: NetT, X: torch.Tensor, y: torch.Tensor,
+             device: torch.device | str, batch_size: int = 2048) -> float:
     net.eval()
     correct, total = 0, 0
     n = len(X)
@@ -54,7 +53,9 @@ def evaluate(net, X, y, device, batch_size=2048):
     return correct / total
 
 
-def train_one(net, X_train, y_train, device, epochs, batch_size, lr=1e-3, seed=0):
+def train_one(net: NetT, X_train: torch.Tensor, y_train: torch.Tensor,
+              device: torch.device | str, epochs: int, batch_size: int,
+              lr: float = 1e-3, seed: int = 0) -> NetT:
     torch.manual_seed(seed)
     net.to(device)
     opt = torch.optim.Adam(net.parameters(), lr=lr)
@@ -74,7 +75,7 @@ def train_one(net, X_train, y_train, device, epochs, batch_size, lr=1e-3, seed=0
     return net
 
 
-def main():
+def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("--data", required=True, help="dataset dir from gotrain.dataset")
     ap.add_argument("--out", required=True, help="output dir for results.json")
@@ -87,7 +88,7 @@ def main():
                     help="cap training positions (0 = all)")
     args = ap.parse_args()
 
-    device = args.device
+    device: torch.device | str = args.device
     if device == "auto":
         device = "cuda" if torch.cuda.is_available() else "cpu"
     print(f"device={device}")
@@ -102,7 +103,7 @@ def main():
     print(f"train={len(X_train)} val={len(X_val)}")
 
     os.makedirs(args.out, exist_ok=True)
-    results = {}
+    results: dict[str, Any] = {}
     for name in args.archs:
         print(f"\n=== {name} ===")
         net = ARCHS[name]()

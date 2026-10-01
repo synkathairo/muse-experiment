@@ -16,6 +16,7 @@ Usage:
 
 Output: <out>/sgf/{game_id}.sgf + <out>/manifest.jsonl (one JSON per game).
 """
+from __future__ import annotations
 
 import argparse
 import json
@@ -23,13 +24,14 @@ import os
 import time
 import urllib.error
 import urllib.request
+from typing import Any
 
-API = "https://online-go.com"
-UA = "weiqi-demo-research/0.1 (single-machine dataset pull; contact via repo)"
-LADDER_9X9 = 315
+API: str = "https://online-go.com"
+UA: str = "weiqi-demo-research/0.1 (single-machine dataset pull; contact via repo)"
+LADDER_9X9: int = 315
 
 
-def api_get(url, delay):
+def api_get(url: str, delay: float) -> Any:
     req = urllib.request.Request(url, headers={"User-Agent": UA})
     while True:
         time.sleep(delay)
@@ -45,7 +47,7 @@ def api_get(url, delay):
             raise
 
 
-def fetch_sgf_text(gid, delay):
+def fetch_sgf_text(gid: int, delay: float) -> str | None:
     """Fetch one SGF, honoring 429s. Returns text or None."""
     url = f"{API}/api/v1/games/{gid}/sgf"
     while True:
@@ -66,7 +68,8 @@ def fetch_sgf_text(gid, delay):
             return None
 
 
-def phase2_download(game_ids, sgf_dir, delay, workers):
+def phase2_download(game_ids: list, sgf_dir: str, delay: float,
+                    workers: int) -> int:
     import threading
     from concurrent.futures import ThreadPoolExecutor
     todo = [gid for gid in game_ids
@@ -75,7 +78,7 @@ def phase2_download(game_ids, sgf_dir, delay, workers):
     done = [0]
     lock = threading.Lock()
 
-    def one(gid):
+    def one(gid: int) -> bool:
         text = fetch_sgf_text(gid, delay)
         ok = bool(text and "GM[1]" in text)
         if ok:
@@ -94,17 +97,17 @@ def phase2_download(game_ids, sgf_dir, delay, workers):
     return n
 
 
-def is_bot(player_obj):
+def is_bot(player_obj: dict | None) -> bool:
     ui = (player_obj or {}).get("ui_class", "")
     name = (player_obj or {}).get("username", "")
     return "bot" in ui.split() or "bot" in name.lower()
 
 
-def phase1_discovery(args):
+def phase1_discovery(args: argparse.Namespace) -> list:
     """Crawl players -> ranked finished 9x9 games; returns list of game ids."""
     manifest_path = os.path.join(args.out, "manifest.jsonl")
 
-    seen_games = set()
+    seen_games: set = set()
     if os.path.exists(manifest_path):
         with open(manifest_path) as f:
             for line in f:
@@ -115,7 +118,7 @@ def phase1_discovery(args):
     manifest = open(manifest_path, "a")
 
     print("fetching 9x9 ladder members...", flush=True)
-    seeds = []
+    seeds: list = []
     page = 1
     # NOTE: this endpoint caps page_size at 50 and omits the `next` URL,
     # so paginate manually with ?page=N.
@@ -188,13 +191,13 @@ def phase1_discovery(args):
     return list(seen_games)
 
 
-def run(args):
+def run(args: argparse.Namespace) -> None:
     sgf_dir = os.path.join(args.out, "sgf")
     os.makedirs(sgf_dir, exist_ok=True)
     if args.phase2_only:
         # resume: read game ids straight from the existing manifest
         man = os.path.join(args.out, "manifest.jsonl")
-        seen_games = []
+        seen_games: list = []
         with open(man) as f:
             for line in f:
                 line = line.strip()
@@ -208,7 +211,7 @@ def run(args):
     phase2_download(seen_games, sgf_dir, args.delay, args.workers)
 
 
-def main():
+def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("--out", required=True)
     ap.add_argument("--max-games", type=int, default=80000)

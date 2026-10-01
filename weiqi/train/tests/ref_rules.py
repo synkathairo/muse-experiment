@@ -19,13 +19,18 @@ to differ from both:
 
 This file is intentionally slow and obvious. Correctness over speed.
 """
+from __future__ import annotations
 
-N = 9
-EMPTY, BLACK, WHITE = 0, 1, 2
-KOMI = 7.5
+from collections.abc import Iterator
+
+N: int = 9
+EMPTY: int = 0
+BLACK: int = 1
+WHITE: int = 2
+KOMI: float = 7.5
 
 
-def _neighbors(i):
+def _neighbors(i: int) -> Iterator[int]:
     r, c = divmod(i, N)
     if r > 0:
         yield i - N
@@ -40,17 +45,20 @@ def _neighbors(i):
 class RefBoard:
     """Naive 9x9 board. move: int 0..80 or None (pass). color: BLACK/WHITE."""
 
-    def __init__(self):
-        self.b = [EMPTY] * (N * N)
-        self.ko = None            # int point or None, for the side to move
-        self.prev = []            # previous board tuples (for positional ko)
-        self.caps = {BLACK: 0, WHITE: 0}
-        self.passes = 0
+    def __init__(self) -> None:
+        self.b: list[int] = [EMPTY] * (N * N)
+        self.ko: int | None = None   # int point or None, for the side to move
+        self.prev: list[tuple[int, ...]] = []  # previous boards (positional ko)
+        self.caps: dict[int, int] = {BLACK: 0, WHITE: 0}
+        self.passes: int = 0
 
     # -- core simulation -------------------------------------------------
-    def _group(self, b, i):
+    def _group(self, b: list[int], i: int) -> tuple[set[int], set[int]]:
         color = b[i]
-        stones, libs, stack, seen = set(), set(), [i], {i}
+        stones: set[int] = set()
+        libs: set[int] = set()
+        stack: list[int] = [i]
+        seen: set[int] = {i}
         while stack:
             s = stack.pop()
             stones.add(s)
@@ -62,13 +70,14 @@ class RefBoard:
                     stack.append(nb)
         return stones, libs
 
-    def _simulate(self, i, color):
+    def _simulate(self, i: int, color: int) -> tuple[list[int], int] | None:
         """Copy board, play, remove dead foe groups. Returns (board, n_captured)
         or None for suicide."""
         b = self.b[:]
         b[i] = color
         foe = WHITE if color == BLACK else BLACK
-        captured, seen = 0, set()
+        captured: int = 0
+        seen: set[int] = set()
         for nb in _neighbors(i):
             if b[nb] == foe and nb not in seen:
                 stones, libs = self._group(b, nb)
@@ -82,7 +91,7 @@ class RefBoard:
         return b, captured
 
     # -- public API ------------------------------------------------------
-    def legal_moves(self, color):
+    def legal_moves(self, color: int) -> list[bool]:
         """[bool]*82: legal moves for color. Index 81 = pass (always legal)."""
         mask = [False] * 82
         mask[81] = True
@@ -97,7 +106,7 @@ class RefBoard:
             mask[i] = True
         return mask
 
-    def play(self, move, color):
+    def play(self, move: int | None, color: int) -> int:
         """Apply move (int or None). Returns stones captured. Raises on illegal."""
         if move is None:
             self.prev.append(tuple(self.b))
@@ -135,7 +144,7 @@ class RefBoard:
                 break
         return captured
 
-    def score(self):
+    def score(self) -> tuple[float, float]:
         """Tromp-Taylor area score: (black, white + komi)."""
         black = sum(1 for v in self.b if v == BLACK)
         white = sum(1 for v in self.b if v == WHITE)

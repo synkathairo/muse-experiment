@@ -17,10 +17,12 @@ to_move, correct moves) — re-encodable without game history. Caveat: eval-time
 legality uses an empty history, so positional-superko edge cases are ignored;
 simple ko IS handled via board.ko.
 """
+from __future__ import annotations
 
 import json
 import os
 import sys
+from typing import Any
 
 import numpy as np
 import torch
@@ -29,10 +31,10 @@ from .rules import Board, EMPTY, BLACK, WHITE, opponent
 from .selfplay import legal_mask, observe
 from . import tactical as tacmod
 
-N = 9
+N: int = 9
 
 
-def _libs_after(board, r, c, color):
+def _libs_after(board: Board, r: int, c: int, color: int) -> int:
     """Liberty count of the new own group if `color` plays (r, c).
 
     Tentative apply + revert, mirroring Board.is_legal's pattern. Assumes the
@@ -53,10 +55,10 @@ def _libs_after(board, r, c, color):
     return n
 
 
-def tactical_answers(board, color):
+def tactical_answers(board: Board, color: int) -> list[tuple[int, str]]:
     """Sorted [(move_idx, kind)] of 1-ply tactical moves; kind in
     {"capture", "escape"}. Empty list => not a tactical position."""
-    ans = {}
+    ans: dict[int, str] = {}
     seen = bytearray(N * N)
     opp = opponent(color)
     for r in range(N):
@@ -81,13 +83,14 @@ def tactical_answers(board, color):
     return sorted(ans.items())
 
 
-def encode_pos(board, color, use_tactical):
+def encode_pos(board: Board, color: int, use_tactical: bool) -> np.ndarray:
     if use_tactical:
         return tacmod.encode_tactical(board, color)
     return observe(board, color)
 
 
-def greedy_move(model, board, color, use_tactical):
+def greedy_move(model: torch.nn.Module, board: Board, color: int,
+               use_tactical: bool) -> int:
     planes = encode_pos(board, color, use_tactical)
     mask = legal_mask(board, color)
     with torch.no_grad():
@@ -97,7 +100,7 @@ def greedy_move(model, board, color, use_tactical):
     return int(np.argmax(logits))
 
 
-def snapshot(board, color):
+def snapshot(board: Board, color: int) -> dict[str, Any]:
     """Serialisable position record (no history)."""
     raw = bytes(b for row in board.grid for b in row)
     return {
@@ -108,7 +111,7 @@ def snapshot(board, color):
     }
 
 
-def restore(rec):
+def restore(rec: dict[str, Any]) -> tuple[Board, int]:
     """Rebuild a Board from a snapshot record (empty history — see caveat)."""
     raw = bytes.fromhex(rec["grid"])
     b = Board(N)
@@ -120,8 +123,9 @@ def restore(rec):
     return b, color
 
 
-def mine_selfplay(model_ckpt, n_games=40, seed=0, temperature=0.7,
-                  max_positions=500):
+def mine_selfplay(model_ckpt: str, n_games: int = 40, seed: int = 0,
+                  temperature: float = 0.7,
+                  max_positions: int = 500) -> list[dict[str, Any]]:
     """Play the frozen 6-plane baseline vs itself (sampled), mining tactical
     positions at every turn. Returns a list of position records."""
     from .net import GoNet
@@ -133,8 +137,8 @@ def mine_selfplay(model_ckpt, n_games=40, seed=0, temperature=0.7,
     model.load_state_dict(to_gonet_state_dict(sd))
     model.eval()
     rng = np.random.default_rng(seed)
-    positions = []
-    seen = set()
+    positions: list[dict[str, Any]] = []
+    seen: set = set()
     for _ in range(n_games):
         b = Board(N)
         color = BLACK
@@ -177,15 +181,17 @@ def mine_selfplay(model_ckpt, n_games=40, seed=0, temperature=0.7,
     return positions
 
 
-def mine_vs_gnugo(net_argv, gnugo_argv, n_games=8, max_positions=500):
+def mine_vs_gnugo(net_argv: list[str], gnugo_argv: list[str],
+                  n_games: int = 8,
+                  max_positions: int = 500) -> list[dict[str, Any]]:
     """Play the frozen baseline (as a GTP subprocess) vs GNU Go, mining
     tactical positions from the net's turns in games the net LOST."""
     sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)) or ".")
     from eval_vs_gnugo import GTPClient
     from gotrain.gtp import from_gtp_vertex
 
-    positions = []
-    seen = set()
+    positions: list[dict[str, Any]] = []
+    seen: set = set()
     for gi in range(n_games):
         gnugo = GTPClient(gnugo_argv)
         net = GTPClient(net_argv)
@@ -196,9 +202,9 @@ def mine_vs_gnugo(net_argv, gnugo_argv, n_games=8, max_positions=500):
                 eng.command("komi 7.5")
             net_is_black = (gi % 2 == 0)
             arbiter = Board(N)
-            pending = []  # (record, answers) at net's turns
+            pending: list = []  # (record, answers) at net's turns
             moves, passes = 0, 0
-            winner = None
+            winner: str | None = None
             while moves < 250:
                 black_to_move = (moves % 2 == 0)
                 me = net if (black_to_move == net_is_black) else gnugo
@@ -253,12 +259,12 @@ def mine_vs_gnugo(net_argv, gnugo_argv, n_games=8, max_positions=500):
     return positions
 
 
-def _score(board):
+def _score(board: Board) -> tuple[float, float]:
     from .selfplay import score
     return score(board)
 
 
-def load_model_for_eval(checkpoint):
+def load_model_for_eval(checkpoint: str) -> tuple[torch.nn.Module, bool]:
     """(model, use_tactical): auto-detect 13-plane vs 6-plane checkpoints."""
     from .net import GoNet, GoNetTactical
     from .net_aux import to_gonet_state_dict
@@ -275,7 +281,8 @@ def load_model_for_eval(checkpoint):
     return model.eval(), False
 
 
-def eval_blunders(checkpoint, positions):
+def eval_blunders(checkpoint: str,
+                  positions: list[dict[str, Any]]) -> dict[str, Any]:
     """Blunder rate of `checkpoint` on mined positions.
 
     Returns dict with n, blunders, rate, and capture/escape splits.
@@ -309,7 +316,7 @@ def eval_blunders(checkpoint, positions):
     }
 
 
-def main():
+def main() -> None:
     ap = __import__("argparse").ArgumentParser()
     sub = ap.add_subparsers(dest="cmd", required=True)
     m = sub.add_parser("mine", help="mine positions from frozen baseline")

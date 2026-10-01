@@ -14,6 +14,7 @@ for pasting into web/site/demos/go/manifest.json:
         --out-dir ../../web/site/demos/go/weights \\
         --name-prefix selfplay-clean-
 """
+from __future__ import annotations
 
 import argparse
 import glob
@@ -24,12 +25,12 @@ import re
 import numpy as np
 import torch
 
-from .net import GoNet, EXPORT_ORDER, ordered_tensors
+from .net import GoNet, GoNetTactical, EXPORT_ORDER, ordered_tensors
 from .net import ordered_tensors_tactical
 from .net_aux import to_gonet_state_dict
 
 
-def export_weights(model, out_path):
+def export_weights(model: GoNet, out_path: str) -> str:
     tensors = ordered_tensors(model)
     with open(out_path, "wb") as f:
         for t in tensors:
@@ -37,7 +38,7 @@ def export_weights(model, out_path):
     return out_path
 
 
-def export_weights_tactical(model, out_path):
+def export_weights_tactical(model: GoNetTactical, out_path: str) -> str:
     """Export a GoNetTactical to the same flat fp16 layout, but with the
     13-channel conv1 (EXPORT_ORDER_TACTICAL). Experimental; the demo path
     does not consume this yet (phase 2, pending the kill test)."""
@@ -48,10 +49,11 @@ def export_weights_tactical(model, out_path):
     return out_path
 
 
-def read_export(path):
+def read_export(path: str) -> dict[str, np.ndarray]:
     """Read a weight file back into {key: float32 ndarray} (for tests / checks)."""
     raw = np.fromfile(path, dtype="<f2").astype(np.float32)
-    out, off = {}, 0
+    out: dict[str, np.ndarray] = {}
+    off = 0
     for key, shape in EXPORT_ORDER:
         n = int(np.prod(shape))
         out[key] = raw[off:off + n].reshape(shape)
@@ -60,7 +62,7 @@ def read_export(path):
     return out
 
 
-def export_checkpoint(checkpoint, out_path):
+def export_checkpoint(checkpoint: str, out_path: str) -> int:
     ck = torch.load(checkpoint, map_location="cpu", weights_only=False)
     sd = ck["model"] if isinstance(ck, dict) and "model" in ck else ck
     model = GoNet()
@@ -70,7 +72,7 @@ def export_checkpoint(checkpoint, out_path):
     return os.path.getsize(out_path)
 
 
-def parse_target(s):
+def parse_target(s: str) -> int:
     s = s.strip().lower()
     mult = 1
     if s.endswith("k"):
@@ -80,7 +82,7 @@ def parse_target(s):
     return int(float(s) * mult)
 
 
-def label_for(steps):
+def label_for(steps: int) -> str:
     if steps % 1_000_000 == 0:
         return f"{steps // 1_000_000}M"
     if steps % 1_000 == 0:
@@ -88,8 +90,8 @@ def label_for(steps):
     return str(steps)
 
 
-def nearest_snapshot(run_dir, target):
-    cands = []
+def nearest_snapshot(run_dir: str, target: int) -> tuple[int, str]:
+    cands: list[tuple[int, str]] = []
     for p in glob.glob(os.path.join(run_dir, "snap_*.pt")):
         m = re.search(r"snap_(\d+)\.pt$", p)
         if m:
@@ -99,7 +101,7 @@ def nearest_snapshot(run_dir, target):
     return min(cands, key=lambda sp: abs(sp[0] - target))
 
 
-def main():
+def main() -> None:
     ap = argparse.ArgumentParser()
     g = ap.add_mutually_exclusive_group(required=True)
     g.add_argument("--checkpoint", help=".pt file (single-export mode)")
@@ -124,8 +126,8 @@ def main():
 
     if not args.targets:
         raise SystemExit("--run-dir requires --targets")
-    seen = set()
-    entries = []
+    seen: set[str] = set()
+    entries: list[dict] = []
     for t in args.targets.split(","):
         target = parse_target(t)
         steps, ckpt = nearest_snapshot(args.run_dir, target)

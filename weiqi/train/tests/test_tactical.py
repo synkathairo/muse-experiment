@@ -5,6 +5,7 @@ perspective, 1/2/>=3 buckets, ko encoding), planes 0-5 matching the locked
 spec, parameter count, zero-init checkpoint branching equivalence, tactical
 env observations, and the tactical export order.
 """
+from __future__ import annotations
 
 import os
 
@@ -20,7 +21,7 @@ from gotrain.selfplay import SelfPlayGo, legal_mask
 from gotrain import features
 
 
-def play_seq(moves):
+def play_seq(moves: list[tuple[int, int]]) -> Board:
     """Play an alternating B/W sequence on a fresh 9x9 board."""
     b = Board(9)
     for i, (r, c) in enumerate(moves):
@@ -28,7 +29,7 @@ def play_seq(moves):
     return b
 
 
-def test_empty_board_tactical_planes_zero():
+def test_empty_board_tactical_planes_zero() -> None:
     b = Board(9)
     p = tactical.encode_tactical(b, BLACK)
     assert p.shape == (13, 9, 9)
@@ -40,7 +41,7 @@ def test_empty_board_tactical_planes_zero():
     assert p[4].sum() == 81  # black to move
 
 
-def test_liberty_buckets_and_perspective():
+def test_liberty_buckets_and_perspective() -> None:
     # B(0,0) corner stone, W(0,1): black stone has exactly 1 liberty (1,0);
     # white stone has exactly 2 liberties (0,2),(1,1).
     b = play_seq([(0, 0), (0, 1)])
@@ -59,7 +60,7 @@ def test_liberty_buckets_and_perspective():
     assert q[6].sum() == 0 and q[10].sum() == 0
 
 
-def test_liberty_bucket_ge3():
+def test_liberty_bucket_ge3() -> None:
     # Lone center stone: 4 liberties.
     b = play_seq([(4, 4)])
     p = tactical.encode_tactical(b, BLACK)
@@ -72,7 +73,7 @@ def test_liberty_bucket_ge3():
     assert p2[8].sum() == 2
 
 
-def test_liberty_map_matches_planes():
+def test_liberty_map_matches_planes() -> None:
     # liberty_map: exact count per stone, 0 on empty.
     b = play_seq([(0, 0), (0, 1), (4, 4)])
     lm = b.liberty_map()
@@ -83,7 +84,7 @@ def test_liberty_map_matches_planes():
     assert lm[1, 1] == 0
 
 
-def test_ko_planes():
+def test_ko_planes() -> None:
     # Build a simple ko: B captures the lone W(4,4) at (5,4); the capturing
     # stone is a lone single stone with one liberty, so ko=(4,4).
     b = play_seq([(3, 4), (5, 3), (4, 3), (5, 5), (4, 5), (6, 4),
@@ -96,7 +97,7 @@ def test_ko_planes():
     assert not legal_mask(b, WHITE)[4 * 9 + 4]
 
 
-def test_planes_0_to_5_match_locked_spec():
+def test_planes_0_to_5_match_locked_spec() -> None:
     b = play_seq([(3, 3), (4, 4), (3, 4), (5, 5)])
     for color in (BLACK, WHITE):
         pt = tactical.encode_tactical(b, color)
@@ -107,7 +108,7 @@ def test_planes_0_to_5_match_locked_spec():
         np.testing.assert_array_equal(pt[:6], pl)
 
 
-def test_tactical_param_count():
+def test_tactical_param_count() -> None:
     m = GoNetTactical()
     assert m.param_count() == EXPECTED_PARAMS_TACTICAL == 134554
     assert tuple(m.conv1.weight.shape) == (64, 13, 3, 3)
@@ -119,7 +120,7 @@ def test_tactical_param_count():
         assert tuple(m.state_dict()[k].shape) == tuple(g.state_dict()[k].shape)
 
 
-def test_branch_zero_init_equivalence(tmp_path):
+def test_branch_zero_init_equivalence(tmp_path) -> None:
     src = tactical.BASE_CHECKPOINT
     if not os.path.exists(src):
         pytest.skip("15.5M baseline checkpoint not present")
@@ -145,7 +146,7 @@ def test_branch_zero_init_equivalence(tmp_path):
     base.eval()
     branched.eval()
     rng = np.random.default_rng(0)
-    boards = []
+    boards: list = []
     for _ in range(6):
         b = Board(9)
         col = BLACK
@@ -177,7 +178,7 @@ def test_branch_zero_init_equivalence(tmp_path):
     assert tuple(ck["model"]["conv1.weight"].shape) == (64, 13, 3, 3)
 
 
-def test_tactical_env_obs_shape():
+def test_tactical_env_obs_shape() -> None:
     env = SelfPlayGo(num_envs=2, seed=1, tactical=True)
     assert env.n_planes == 13
     obs = env.reset()
@@ -191,7 +192,7 @@ def test_tactical_env_obs_shape():
     assert env6.reset().shape == (2, 6, 9, 9)
 
 
-def test_tactical_export_order(tmp_path):
+def test_tactical_export_order(tmp_path) -> None:
     from gotrain.export import export_weights_tactical
     from gotrain.net import EXPORT_ORDER_TACTICAL
     m = GoNetTactical()

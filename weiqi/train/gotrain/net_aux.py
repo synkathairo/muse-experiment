@@ -20,16 +20,17 @@ Design discipline:
     trained with MSE — the same bounded style as the value head.
   - Margin target: (my_score - opp_score) / 81, raw scalar head, MSE.
 """
+from __future__ import annotations
 
 import torch
 import torch.nn as nn
 
 from .net import GoNet, N_POINTS
 
-TRUNK_PREFIX = "trunk."
+TRUNK_PREFIX: str = "trunk."
 
 # Auxiliary head parameter names (used to verify resume-mapping strictness).
-AUX_KEYS = {
+AUX_KEYS: set[str] = {
     "own_conv.weight", "own_conv.bias",
     "margin_conv.weight", "margin_conv.bias",
     "margin_fc1.weight", "margin_fc1.bias",
@@ -40,17 +41,19 @@ AUX_KEYS = {
 class GoNetAux(nn.Module):
     """GoNet trunk + ownership (81) + score-margin (1) heads. Training only."""
 
-    def __init__(self):
+    def __init__(self) -> None:
         super().__init__()
-        self.trunk = GoNet()
+        self.trunk: GoNet = GoNet()
         # ownership head: 1x1 conv -> 81 tanh-squashed ownership scores
-        self.own_conv = nn.Conv2d(64, 1, kernel_size=1)
+        self.own_conv: nn.Conv2d = nn.Conv2d(64, 1, kernel_size=1)
         # margin head mirrors the value head, but no tanh (raw score)
-        self.margin_conv = nn.Conv2d(64, 1, kernel_size=1)
-        self.margin_fc1 = nn.Linear(N_POINTS, 32)
-        self.margin_fc2 = nn.Linear(32, 1)
+        self.margin_conv: nn.Conv2d = nn.Conv2d(64, 1, kernel_size=1)
+        self.margin_fc1: nn.Linear = nn.Linear(N_POINTS, 32)
+        self.margin_fc2: nn.Linear = nn.Linear(32, 1)
 
-    def _forward_all(self, x):
+    def _forward_all(self, x: torch.Tensor
+                     ) -> tuple[torch.Tensor, torch.Tensor,
+                                torch.Tensor, torch.Tensor]:
         f = self.trunk.features(x)
         logits = self.trunk.pol_fc(self.trunk.pol_conv(f).flatten(1))
         v = torch.relu(self.trunk.val_fc1(self.trunk.val_conv(f).flatten(1)))
@@ -60,19 +63,21 @@ class GoNetAux(nn.Module):
         margin = self.margin_fc2(m).squeeze(1)
         return logits, value, own, margin
 
-    def forward(self, x):
+    def forward(self, x: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
         logits, value, _, _ = self._forward_all(x)
         return logits, value
 
-    def forward_aux(self, x):
+    def forward_aux(self, x: torch.Tensor
+                    ) -> tuple[torch.Tensor, torch.Tensor,
+                               torch.Tensor, torch.Tensor]:
         """(logits, value, own, margin) for the auxiliary loss update."""
         return self._forward_all(x)
 
-    def param_count(self):
+    def param_count(self) -> int:
         return sum(p.numel() for p in self.parameters())
 
 
-def to_gonet_state_dict(state_dict):
+def to_gonet_state_dict(state_dict: dict) -> dict:
     """GoNetAux-shaped state dict -> plain GoNet state dict (trunk weights).
 
     Passes plain GoNet dicts through unchanged, so engine entry points
@@ -84,7 +89,8 @@ def to_gonet_state_dict(state_dict):
     return state_dict
 
 
-def load_trunk_from_gonet(aux_model, gonet_state_dict):
+def load_trunk_from_gonet(aux_model: GoNetAux,
+                          gonet_state_dict: dict) -> torch.nn.modules.module._IncompatibleKeys:
     """Initialize an aux model's trunk from a plain GoNet checkpoint
     (e.g. the 15.5M run); aux heads keep their random init.
 
@@ -95,7 +101,7 @@ def load_trunk_from_gonet(aux_model, gonet_state_dict):
     return aux_model.load_state_dict(prefixed, strict=False)
 
 
-def check_trunk_resume(missing_keys):
+def check_trunk_resume(missing_keys: list[str]) -> None:
     """Validate that a trunk-mapped resume left ONLY the aux heads unloaded."""
     missing = set(missing_keys)
     unknown = missing - AUX_KEYS

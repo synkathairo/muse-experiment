@@ -12,6 +12,7 @@ Usage:
     python -m gotrain.make_golden --out ../golden
 Writes golden_{i}_{planes,policy,value}.npy + golden_{i}.json (sgf + description).
 """
+from __future__ import annotations
 
 import argparse
 import json
@@ -23,7 +24,7 @@ import torch
 from . import features, rules, sgf
 from .net import GoNet
 
-GOLDEN_SGFS = [
+GOLDEN_SGFS: list[tuple[str, str]] = [
     ("empty board, black to play",
      "(;GM[1]FF[4]SZ[9])"),
     ("opening: two stones each, white to play, last move marked",
@@ -35,7 +36,7 @@ GOLDEN_SGFS = [
 ]
 
 
-def build_position(sgf_text):
+def build_position(sgf_text: str) -> np.ndarray:
     game = sgf.parse_sgf(sgf_text)
     assert game is not None and game.size == 9
     board = rules.Board(9)
@@ -53,7 +54,7 @@ def build_position(sgf_text):
     return planes
 
 
-def main():
+def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("--out", required=True)
     ap.add_argument("--seed", type=int, default=42)

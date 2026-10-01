@@ -12,6 +12,7 @@ Per Astra: keep depth at 4 layers (don't confound with depth changes).
 The global pooling MUST include a nonlinearity after mixing (mix_1x1 + ReLU),
 otherwise the global vector is just a linear offset.
 """
+from __future__ import annotations
 
 import torch
 import torch.nn as nn
@@ -20,33 +21,33 @@ import torch.nn as nn
 class GoNetWide(nn.Module):
     """128-channel variant of GoNet (~466K params). Tests capacity hypothesis."""
 
-    def __init__(self, in_planes=6, channels=128):
+    def __init__(self, in_planes: int = 6, channels: int = 128) -> None:
         super().__init__()
-        self.channels = channels
-        self.conv1 = nn.Conv2d(in_planes, channels, kernel_size=3, padding=1)
-        self.conv2 = nn.Conv2d(channels, channels, kernel_size=3, padding=1)
-        self.conv3 = nn.Conv2d(channels, channels, kernel_size=3, padding=1)
-        self.conv4 = nn.Conv2d(channels, channels, kernel_size=3, padding=1)
-        self.pol_conv = nn.Conv2d(channels, 2, kernel_size=1)
-        self.pol_fc = nn.Linear(162, 82)
-        self.val_conv = nn.Conv2d(channels, 1, kernel_size=1)
-        self.val_fc1 = nn.Linear(81, 32)
-        self.val_fc2 = nn.Linear(32, 1)
+        self.channels: int = channels
+        self.conv1: nn.Conv2d = nn.Conv2d(in_planes, channels, kernel_size=3, padding=1)
+        self.conv2: nn.Conv2d = nn.Conv2d(channels, channels, kernel_size=3, padding=1)
+        self.conv3: nn.Conv2d = nn.Conv2d(channels, channels, kernel_size=3, padding=1)
+        self.conv4: nn.Conv2d = nn.Conv2d(channels, channels, kernel_size=3, padding=1)
+        self.pol_conv: nn.Conv2d = nn.Conv2d(channels, 2, kernel_size=1)
+        self.pol_fc: nn.Linear = nn.Linear(162, 82)
+        self.val_conv: nn.Conv2d = nn.Conv2d(channels, 1, kernel_size=1)
+        self.val_fc1: nn.Linear = nn.Linear(81, 32)
+        self.val_fc2: nn.Linear = nn.Linear(32, 1)
 
-    def features(self, x):
+    def features(self, x: torch.Tensor) -> torch.Tensor:
         t = torch.relu(self.conv1(x))
         t = torch.relu(self.conv2(t))
         t = torch.relu(self.conv3(t))
         return torch.relu(self.conv4(t))
 
-    def forward(self, x):
+    def forward(self, x: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
         t = self.features(x)
         logits = self.pol_fc(self.pol_conv(t).flatten(1))
         v = torch.relu(self.val_fc1(self.val_conv(t).flatten(1)))
         value = torch.tanh(self.val_fc2(v)).squeeze(1)
         return logits, value
 
-    def param_count(self):
+    def param_count(self) -> int:
         return sum(p.numel() for p in self.parameters())
 
 
@@ -59,25 +60,26 @@ class GoNetPool(nn.Module):
     (the heads after the trunk are linear).
     """
 
-    def __init__(self, in_planes=6, channels=64, global_dim=32):
+    def __init__(self, in_planes: int = 6, channels: int = 64,
+                 global_dim: int = 32) -> None:
         super().__init__()
-        self.channels = channels
-        self.global_dim = global_dim
-        self.conv1 = nn.Conv2d(in_planes, channels, kernel_size=3, padding=1)
-        self.conv2 = nn.Conv2d(channels, channels, kernel_size=3, padding=1)
-        self.conv3 = nn.Conv2d(channels, channels, kernel_size=3, padding=1)
-        self.conv4 = nn.Conv2d(channels, channels, kernel_size=3, padding=1)
+        self.channels: int = channels
+        self.global_dim: int = global_dim
+        self.conv1: nn.Conv2d = nn.Conv2d(in_planes, channels, kernel_size=3, padding=1)
+        self.conv2: nn.Conv2d = nn.Conv2d(channels, channels, kernel_size=3, padding=1)
+        self.conv3: nn.Conv2d = nn.Conv2d(channels, channels, kernel_size=3, padding=1)
+        self.conv4: nn.Conv2d = nn.Conv2d(channels, channels, kernel_size=3, padding=1)
         # Global path: GAP -> FC -> ReLU
-        self.global_fc = nn.Linear(channels, global_dim)
+        self.global_fc: nn.Linear = nn.Linear(channels, global_dim)
         # Mix local + global: 1x1 conv on concatenated features + ReLU
-        self.mix_conv = nn.Conv2d(channels + global_dim, channels, kernel_size=1)
-        self.pol_conv = nn.Conv2d(channels, 2, kernel_size=1)
-        self.pol_fc = nn.Linear(162, 82)
-        self.val_conv = nn.Conv2d(channels, 1, kernel_size=1)
-        self.val_fc1 = nn.Linear(81, 32)
-        self.val_fc2 = nn.Linear(32, 1)
+        self.mix_conv: nn.Conv2d = nn.Conv2d(channels + global_dim, channels, kernel_size=1)
+        self.pol_conv: nn.Conv2d = nn.Conv2d(channels, 2, kernel_size=1)
+        self.pol_fc: nn.Linear = nn.Linear(162, 82)
+        self.val_conv: nn.Conv2d = nn.Conv2d(channels, 1, kernel_size=1)
+        self.val_fc1: nn.Linear = nn.Linear(81, 32)
+        self.val_fc2: nn.Linear = nn.Linear(32, 1)
 
-    def features(self, x):
+    def features(self, x: torch.Tensor) -> torch.Tensor:
         t = torch.relu(self.conv1(x))
         t = torch.relu(self.conv2(t))
         t = torch.relu(self.conv3(t))
@@ -88,25 +90,26 @@ class GoNetPool(nn.Module):
         t = torch.relu(self.mix_conv(torch.cat([t, g], dim=1)))
         return t
 
-    def forward(self, x):
+    def forward(self, x: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
         t = self.features(x)
         logits = self.pol_fc(self.pol_conv(t).flatten(1))
         v = torch.relu(self.val_fc1(self.val_conv(t).flatten(1)))
         value = torch.tanh(self.val_fc2(v)).squeeze(1)
         return logits, value
 
-    def param_count(self):
+    def param_count(self) -> int:
         return sum(p.numel() for p in self.parameters())
 
 
 class GoNetWidePool(GoNetPool):
     """128-channel + global pooling. Tests both hypotheses together."""
 
-    def __init__(self, in_planes=6, channels=128, global_dim=32):
+    def __init__(self, in_planes: int = 6, channels: int = 128,
+                 global_dim: int = 32) -> None:
         super().__init__(in_planes=in_planes, channels=channels,
                          global_dim=global_dim)
 
 
 # Expected param counts (for tests)
-EXPECTED_WIDE = 466000  # approximate; exact computed in test
-EXPECTED_POOL = 135000  # approximate; exact computed in test
+EXPECTED_WIDE: int = 466000  # approximate; exact computed in test
+EXPECTED_POOL: int = 135000  # approximate; exact computed in test

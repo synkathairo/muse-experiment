@@ -3,18 +3,20 @@
 Handles SGF collections, variations (main line only), AB/AW setup stones,
 passes, and KGS quirks. Filtered to 9x9; everything else is dropped.
 """
+from __future__ import annotations
 
 import os
 import zipfile
+from collections.abc import Iterator
 from dataclasses import dataclass, field
 
 
 @dataclass
 class Game:
     size: int = 19
-    moves: list = field(default_factory=list)  # [('B'|'W', (r,c) | None)]
-    setup_black: list = field(default_factory=list)
-    setup_white: list = field(default_factory=list)
+    moves: list[tuple[str, tuple[int, int] | None]] = field(default_factory=list)  # [('B'|'W', (r,c) | None)]
+    setup_black: list[tuple[int, int]] = field(default_factory=list)
+    setup_white: list[tuple[int, int]] = field(default_factory=list)
     result: str = ""
     handicap: int = 0
     black_name: str = ""
@@ -22,7 +24,7 @@ class Game:
     to_play: str = "B"  # who moves first after setup (PL[], else handicap convention)
 
 
-def sgf_point(s, size):
+def sgf_point(s: str, size: int) -> tuple[int, int] | None:
     """'aa' -> (0,0); row 0 = top, col 0 = left. '' or out-of-range -> None (pass)."""
     if len(s) < 2:
         return None
@@ -33,7 +35,7 @@ def sgf_point(s, size):
     return None  # e.g. 'tt' on 9x9, or ''
 
 
-def _unquote(v):
+def _unquote(v: str) -> str:
     """OGS sometimes wraps whole values in single quotes: RE['B+2.5']."""
     if len(v) >= 2 and v[0] == v[-1] and v[0] in ("'", '"'):
         return v[1:-1]
@@ -41,40 +43,40 @@ def _unquote(v):
 
 
 class _Parser:
-    def __init__(self, text):
-        self.s = text
-        self.i = 0
-        self.n = len(text)
+    def __init__(self, text: str) -> None:
+        self.s: str = text
+        self.i: int = 0
+        self.n: int = len(text)
 
-    def peek(self):
+    def peek(self) -> str:
         self._ws()
         return self.s[self.i] if self.i < self.n else ""
 
-    def _ws(self):
+    def _ws(self) -> None:
         while self.i < self.n and self.s[self.i] in " \t\r\n":
             self.i += 1
 
-    def _expect(self, ch):
+    def _expect(self, ch: str) -> None:
         assert self.s[self.i] == ch, f"expected {ch!r} at {self.i}"
         self.i += 1
 
-    def parse_collection(self):
-        trees = []
+    def parse_collection(self) -> list[list[dict[str, list[str]]]]:
+        trees: list[list[dict[str, list[str]]]] = []
         while self.peek() == "(":
             self.i += 1
             seq, _ = self._parse_tree()
             trees.append(seq)
         return trees
 
-    def _parse_tree(self):
+    def _parse_tree(self) -> tuple[list[dict[str, list[str]]], bool]:
         """Parse one game tree; returns (main-line nodes, is_unbranched_chain).
 
         OGS writes the main line as nested single-node "variations"
         (;W[gd](;B[fc](;W[gc]...))); a variation that is itself an unbranched
         chain is spliced into the main line, real branches are ignored.
         """
-        seq = []
-        variations = []
+        seq: list[dict[str, list[str]]] = []
+        variations: list[tuple[list[dict[str, list[str]]], bool]] = []
         while True:
             c = self.peek()
             if c == ";":
@@ -97,8 +99,8 @@ class _Parser:
                 return seq, True
         return seq, not variations
 
-    def _parse_node(self):
-        props = {}
+    def _parse_node(self) -> dict[str, list[str]]:
+        props: dict[str, list[str]] = {}
         while True:
             self._ws()
             if self.i < self.n and self.s[self.i].isupper():
@@ -106,12 +108,12 @@ class _Parser:
                 while self.i < self.n and self.s[self.i].isupper():
                     self.i += 1
                 ident = self.s[start:self.i]
-                vals = []
+                vals: list[str] = []
                 while True:
                     self._ws()
                     if self.i < self.n and self.s[self.i] == "[":
                         self.i += 1
-                        buf = []
+                        buf: list[str] = []
                         while self.i < self.n:
                             ch = self.s[self.i]
                             if ch == "\\":
@@ -133,7 +135,7 @@ class _Parser:
         return props
 
 
-def parse_sgf(text):
+def parse_sgf(text: str) -> Game | None:
     """Parse SGF text; return the first game (main line) as a Game, or None."""
     try:
         trees = _Parser(text).parse_collection()
@@ -180,7 +182,7 @@ def parse_sgf(text):
     return game
 
 
-def result_to_z(result):
+def result_to_z(result: str) -> float | None:
     """'B+3.5'/'B+R' -> +1 (black win), 'W+...' -> -1, else None."""
     r = result.strip().upper()
     if r.startswith("B+"):
@@ -190,16 +192,16 @@ def result_to_z(result):
     return None
 
 
-def is_timeout(result):
+def is_timeout(result: str) -> bool:
     r = result.strip().upper()
     return "TIME" in r or r.endswith("+T")  # OGS: 'W+T'; KGS: 'B+Time'
 
 
-def looks_like_bot(name):
+def looks_like_bot(name: str) -> bool:
     return "bot" in name.lower()
 
 
-def iter_sgf_texts(paths):
+def iter_sgf_texts(paths: list[str]) -> Iterator[tuple[str, str]]:
     """Yield (source_label, sgf_text) for .sgf files, dirs, and .zip archives."""
     for path in paths:
         if os.path.isdir(path):
@@ -221,7 +223,7 @@ def iter_sgf_texts(paths):
                 yield path, f.read().decode("utf-8", errors="replace")
 
 
-def iter_games(paths):
+def iter_games(paths: list[str]) -> Iterator[Game]:
     """Yield 9x9 Game objects from the given paths."""
     for label, text in iter_sgf_texts(paths):
         game = parse_sgf(text)

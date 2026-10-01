@@ -14,6 +14,7 @@ Usage:
     python -m gotrain.train_cloning --data data/ds_full --out runs/imit_v1 \\
         --max-steps 60000 --val-every 1000
 """
+from __future__ import annotations
 
 import argparse
 import json
@@ -26,11 +27,12 @@ import torch.nn.functional as F
 
 from .net import GoNet
 
-SNAP_STEPS = [1000, 3000, 10000, 30000, 100000, 300000, 1000000]
-VAL_SUBSET = 20000
+SNAP_STEPS: list[int] = [1000, 3000, 10000, 30000, 100000, 300000, 1000000]
+VAL_SUBSET: int = 20000
 
 
-def load_split(data_dir, split):
+def load_split(data_dir: str, split: str
+               ) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
     X = np.load(os.path.join(data_dir, f"{split}_x.npy"), mmap_mode="r")
     y = np.load(os.path.join(data_dir, f"{split}_y.npy"), mmap_mode="r")
     z = np.load(os.path.join(data_dir, f"{split}_z.npy"), mmap_mode="r")
@@ -39,7 +41,9 @@ def load_split(data_dir, split):
 
 
 @torch.no_grad()
-def evaluate(model, X, y, z, zm, idx, batch=2048):
+def evaluate(model: GoNet, X: np.ndarray, y: np.ndarray, z: np.ndarray,
+             zm: np.ndarray, idx: np.ndarray,
+             batch: int = 2048) -> dict[str, float]:
     model.eval()
     tot_loss = tot_acc = tot_vmse = tot_vmask = 0.0
     n = len(idx)
@@ -63,7 +67,9 @@ def evaluate(model, X, y, z, zm, idx, batch=2048):
     }
 
 
-def save_ckpt(path, model, opt, step, snap_ptr, best_acc, bad_evals, hparams):
+def save_ckpt(path: str, model: GoNet, opt: torch.optim.Optimizer, step: int,
+              snap_ptr: int, best_acc: float, bad_evals: int,
+              hparams: dict) -> None:
     torch.save({
         "step": step,
         "snap_ptr": snap_ptr,
@@ -77,7 +83,7 @@ def save_ckpt(path, model, opt, step, snap_ptr, best_acc, bad_evals, hparams):
     }, path)
 
 
-def main():
+def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("--data", required=True, help="dataset dir from gotrain.dataset")
     ap.add_argument("--out", required=True, help="run dir (checkpoints + train.log)")
@@ -126,7 +132,8 @@ def main():
         print(f"resumed from {args.resume} at step {step}", flush=True)
 
     logf = open(os.path.join(args.out, "train.log"), "a")
-    def log(msg):
+
+    def log(msg: str) -> None:
         line = f"[{time.strftime('%Y-%m-%d %H:%M:%S')}] {msg}"
         print(line, flush=True)
         logf.write(line + "\n")

@@ -2,10 +2,12 @@
 
 Run from weiqi/train/:  python -m unittest tests.test_selfplay -v
 """
+from __future__ import annotations
 
 import os
 import tempfile
 import unittest
+from typing import cast
 
 import numpy as np
 import torch
@@ -19,7 +21,7 @@ from gotrain.train_selfplay import save_ckpt, load_ckpt, random_opponent
 from gotrain.export import export_weights
 
 
-def reference_score(grid):
+def reference_score(grid: list[list[int]]) -> tuple[float, float]:
     """Independent Tromp-Taylor reference scorer (union-find over empty points).
 
     Deliberately a different algorithm from gotrain.selfplay.score (which
@@ -28,9 +30,9 @@ def reference_score(grid):
     Fuzz-compared against score() below; any divergence is a scoring bug.
     """
     n = len(grid)
-    parent = {}
+    parent: dict[tuple[int, int], tuple[int, int]] = {}
 
-    def find(x):
+    def find(x: tuple[int, int]) -> tuple[int, int]:
         while parent[x] != x:
             parent[x] = parent[parent[x]]
             x = parent[x]
@@ -55,8 +57,8 @@ def reference_score(grid):
             elif grid[r][c] == WHITE:
                 white_stones += 1
 
-    comp_borders = {}
-    comp_size = {}
+    comp_borders: dict[tuple[int, int], set[int]] = {}
+    comp_size: dict[tuple[int, int], int] = {}
     for r, c in empties:
         root = find((r, c))
         comp_size[root] = comp_size.get(root, 0) + 1
@@ -76,19 +78,20 @@ def reference_score(grid):
             white_stones + white_terr + selfplay.KOMI)
 
 
-def random_masked_player(obs, masks, game_plies=None):
+def random_masked_player(obs: np.ndarray, masks: np.ndarray,
+                         game_plies: np.ndarray | None = None) -> np.ndarray:
     return random_opponent(obs, masks)
 
 
 class TestScoring(unittest.TestCase):
-    def test_empty_board_white_wins_on_komi(self):
+    def test_empty_board_white_wins_on_komi(self) -> None:
         b = Board(9)
         bs, ws = score(b)
         self.assertEqual(bs, 0)
         self.assertEqual(ws, 7.5)
         self.assertEqual(winner(b), WHITE)
 
-    def test_surrounded_point_is_territory(self):
+    def test_surrounded_point_is_territory(self) -> None:
         b = Board(9)
         for r in range(9):
             for c in range(9):
@@ -99,7 +102,7 @@ class TestScoring(unittest.TestCase):
         self.assertEqual(ws, 7.5)
         self.assertEqual(winner(b), BLACK)
 
-    def test_neutral_point_touches_both(self):
+    def test_neutral_point_touches_both(self) -> None:
         b = Board(9)
         b.grid[0][0] = BLACK
         b.grid[0][2] = WHITE
@@ -109,7 +112,7 @@ class TestScoring(unittest.TestCase):
         self.assertEqual(ws, 1 + 7.5)
         self.assertEqual(winner(b), WHITE)
 
-    def test_two_pass_game_empty_board(self):
+    def test_two_pass_game_empty_board(self) -> None:
         # learner Black passes, opponent (always-pass) passes -> White wins
         env = SelfPlayGo(num_envs=1, seed=0,
                          opponent_fn=lambda o, m, g=None: np.array([81]))
@@ -120,7 +123,7 @@ class TestScoring(unittest.TestCase):
         self.assertEqual(rewards[0], -1.0)  # Black learner loses to komi
         self.assertEqual(lens[0], 2)
 
-    def test_score_matches_independent_reference(self):
+    def test_score_matches_independent_reference(self) -> None:
         # fuzz selfplay.score against the independent union-find
         # reimplementation above; any divergence is a scoring bug.
         rng = np.random.default_rng(20260924)
@@ -151,7 +154,7 @@ class TestScoring(unittest.TestCase):
 
 
 class TestEnvLegality(unittest.TestCase):
-    def test_random_games_all_legal_and_terminate(self):
+    def test_random_games_all_legal_and_terminate(self) -> None:
         # Any illegal move raises AssertionError inside env.step; mask
         # computation bugs would surface here across many positions.
         env = SelfPlayGo(num_envs=8, seed=1, opponent_fn=random_masked_player)
@@ -175,7 +178,7 @@ class TestEnvLegality(unittest.TestCase):
             total_steps += 1
         self.assertEqual(finished, 8)
 
-    def test_learner_alternates_color(self):
+    def test_learner_alternates_color(self) -> None:
         env = SelfPlayGo(num_envs=2, seed=0, opponent_fn=random_masked_player)
         env.reset()
         first = env.learner_color.copy()
@@ -184,7 +187,7 @@ class TestEnvLegality(unittest.TestCase):
         self.assertTrue((first == BLACK).all())
         self.assertTrue((second == WHITE).all())
 
-    def test_planes_match_features_encode(self):
+    def test_planes_match_features_encode(self) -> None:
         # env observations must equal features.encode called explicitly
         env = SelfPlayGo(num_envs=2, seed=3, opponent_fn=random_masked_player)
         obs = env.reset()
@@ -210,7 +213,7 @@ class TestEnvLegality(unittest.TestCase):
 
 
 class TestPPO(unittest.TestCase):
-    def test_gae_shapes_and_terminal_bootstrap(self):
+    def test_gae_shapes_and_terminal_bootstrap(self) -> None:
         T, N = 8, 4
         rewards = torch.zeros(T, N)
         rewards[-1] = 1.0
@@ -225,7 +228,7 @@ class TestPPO(unittest.TestCase):
         # true terminal at the end: no bootstrapping past it
         self.assertTrue(torch.isfinite(adv).all())
 
-    def test_ppo_update_finite(self):
+    def test_ppo_update_finite(self) -> None:
         torch.manual_seed(0)
         model = GoNet()
         opt = torch.optim.Adam(model.parameters(), lr=2.5e-4)
@@ -251,7 +254,7 @@ class TestPPO(unittest.TestCase):
                 continue
             self.assertTrue(np.isfinite(v), f"{k} not finite: {v}")
 
-    def test_checkpoint_roundtrip_and_export_size(self):
+    def test_checkpoint_roundtrip_and_export_size(self) -> None:
         model = GoNet()
         opt = torch.optim.Adam(model.parameters(), lr=1e-3)
         snap = GoNet()
@@ -270,7 +273,7 @@ class TestPPO(unittest.TestCase):
             # locked export size: 130522 params x fp16
             self.assertEqual(os.path.getsize(out), EXPECTED_PARAMS * 2)
 
-    def test_evaluate_finishes_and_scores(self):
+    def test_evaluate_finishes_and_scores(self) -> None:
         # regression: evaluate() once crashed resetting finished envs
         # (env.reset clears env.done before the boolean-mask assignment)
         from gotrain.train_selfplay import evaluate
@@ -280,7 +283,7 @@ class TestPPO(unittest.TestCase):
         self.assertGreaterEqual(wr, 0.0)
         self.assertLessEqual(wr, 1.0)
 
-    def test_masked_sampling_never_illegal(self):
+    def test_masked_sampling_never_illegal(self) -> None:
         # policy heavily favoring an illegal move must still sample legally
         from gotrain.train_selfplay import sample_actions
         torch.manual_seed(0)
@@ -295,8 +298,7 @@ class TestPPO(unittest.TestCase):
             actions, _, _ = sample_actions(model, obs, masks)
             self.assertFalse((actions == 0).any())
 
-
-    def test_dirichlet_noise_unstick_collapsed_policy(self):
+    def test_dirichlet_noise_unstick_collapsed_policy(self) -> None:
         # the 3M-run pathology: a delta policy (p=1 on one move) must still
         # explore when opening noise is on -- temperature scaling can't do this
         from gotrain.train_selfplay import sample_actions, dirichlet_noised_dist
@@ -309,7 +311,7 @@ class TestPPO(unittest.TestCase):
         masks = torch.ones(8, 82, dtype=torch.bool)
         obs = torch.zeros(8, 6, 9, 9)
         noise_mask = torch.ones(8, dtype=torch.bool)
-        seen = set()
+        seen: set[int] = set()
         for _ in range(30):
             actions, _, _ = sample_actions(
                 model, obs, masks, noise_mask=noise_mask,
@@ -329,11 +331,14 @@ class TestPPO(unittest.TestCase):
         dist = masked_dist(logits, masks)
         noised = dirichlet_noised_dist(
             dist, masks, noise_mask, alpha=0.05, eps=0.25)
+        # Categorical.probs is a @lazy_property in torch; at runtime it is
+        # always a Tensor.
+        noised_probs = cast("torch.Tensor", noised.probs)
         self.assertTrue(torch.allclose(
-            noised.probs.sum(-1), torch.ones(8), atol=1e-5))
-        self.assertFalse(bool((noised.probs[~masks] > 0).any()))
+            noised_probs.sum(-1), torch.ones(8), atol=1e-5))
+        self.assertFalse(bool((noised_probs[~masks] > 0).any()))
 
-    def test_gae_does_not_bootstrap_across_terminal(self):
+    def test_gae_does_not_bootstrap_across_terminal(self) -> None:
         # regression: compute_gae masked with terms[t+1] instead of terms[t],
         # leaking the next episode's value into a finished episode's advantage.
         T, N = 3, 1
@@ -352,7 +357,7 @@ class TestPPO(unittest.TestCase):
         self.assertAlmostEqual(adv[1, 0].item(), 0.5, places=5)
         self.assertAlmostEqual(adv[2, 0].item(), -0.5, places=5)
 
-    def test_gae_truncation_is_episodic_terminal(self):
+    def test_gae_truncation_is_episodic_terminal(self) -> None:
         # scored max-ply endings are episodic terminals for GAE: the reward is
         # kept, but no value bootstraps past them (only the final rollout obs
         # is preserved, so a within-rollout truncation would otherwise leak
@@ -373,7 +378,7 @@ class TestPPO(unittest.TestCase):
         self.assertAlmostEqual(adv[1, 0].item(), 0.5, places=5)
         self.assertAlmostEqual(adv[2, 0].item(), -0.5, places=5)
 
-    def test_gae_final_truncation_does_not_bootstrap(self):
+    def test_gae_final_truncation_does_not_bootstrap(self) -> None:
         # truncation on the last rollout step: next_value must not leak in.
         T, N = 2, 1
         rewards = torch.tensor([[0.0], [1.0]])
@@ -387,7 +392,7 @@ class TestPPO(unittest.TestCase):
                              gamma=1.0, gae_lambda=1.0)
         self.assertAlmostEqual(adv[1, 0].item(), 0.5, places=5)
 
-    def test_resume_restores_hparams_not_cli_defaults(self):
+    def test_resume_restores_hparams_not_cli_defaults(self) -> None:
         # regression (2026-09-24): resuming without --total-steps kept the 2M
         # default while the run was past it, making the annealed LR negative
         # (gradient ascent) and destroying the policy in a single iteration.
@@ -409,7 +414,7 @@ class TestPPO(unittest.TestCase):
         lr_now = args.lr * max(0.0, 1.0 - 330 / total_iters)
         self.assertGreater(lr_now, 0.0)
 
-    def test_resume_explicit_cli_overrides_checkpoint(self):
+    def test_resume_explicit_cli_overrides_checkpoint(self) -> None:
         # 2026-09-24: user resumed with --total-steps 3000000; it was silently
         # reverted to the checkpoint's 200000 and the run exited immediately
         # ("done at step 200704"). Explicit flags must win over the checkpoint.
@@ -427,14 +432,14 @@ class TestPPO(unittest.TestCase):
 
 
 class TestEvaluateTally(unittest.TestCase):
-    def test_tally_counts_all_when_room(self):
+    def test_tally_counts_all_when_room(self) -> None:
         from gotrain.train_selfplay import _tally_finished
         wins, played, counted = _tally_finished(
             np.array([0, 2]), np.array([-1.0, 1.0, -1.0]), 1, 0, 5)
         self.assertEqual((wins, played), (1, 2))
         self.assertEqual(list(counted), [0, 2])
 
-    def test_tally_caps_simultaneous_finishes(self):
+    def test_tally_caps_simultaneous_finishes(self) -> None:
         # played=1 of n_games=2, then two envs finish on the same step: only
         # the first is counted, so the win rate covers exactly n_games games.
         from gotrain.train_selfplay import _tally_finished
@@ -446,7 +451,7 @@ class TestEvaluateTally(unittest.TestCase):
 
 
 class TestScoreReward(unittest.TestCase):
-    def test_score_rewards_bounded_and_sign_matches_winloss(self):
+    def test_score_rewards_bounded_and_sign_matches_winloss(self) -> None:
         # score mode: rewards in [-1, 1], and the sign always agrees with the
         # win/loss outcome of the same terminal position.
         env = SelfPlayGo(num_envs=8, seed=1, opponent_fn=random_masked_player,
@@ -477,7 +482,7 @@ class TestScoreReward(unittest.TestCase):
             total_steps += 1
         self.assertGreaterEqual(finished, 16)
 
-    def test_score_reward_monotonic_in_margin(self):
+    def test_score_reward_monotonic_in_margin(self) -> None:
         # bigger learner margin -> bigger reward, via _reward on one env
         env = SelfPlayGo(num_envs=1, seed=0, reward_mode="score",
                          reward_scale=15.0)
@@ -502,8 +507,9 @@ class TestScoreReward(unittest.TestCase):
 if __name__ == "__main__":
     unittest.main()
 
+
 class TestPositionArchive(unittest.TestCase):
-    def test_archive_roundtrip(self):
+    def test_archive_roundtrip(self) -> None:
         """Archived positions restore correctly and preserve the learner-turn invariant."""
         from gotrain.selfplay import PositionArchive
         env = SelfPlayGo(num_envs=2, seed=0)
@@ -515,12 +521,12 @@ class TestPositionArchive(unittest.TestCase):
             obs, _, dones, _, _ = env.step(actions)
             if dones.any():
                 env.reset(np.where(dones)[0])
-        
+
         archive = PositionArchive(max_size=10)
         # Archive env 0's position
         archive.add(env.boards[0], env.learner_color[0], env.plies[0], env.consec_passes[0])
         self.assertEqual(len(archive), 1)
-        
+
         # Restore into env 1 (after resetting it to a fresh game)
         env.reset(np.array([1]))
         board_before = env.boards[1]._tuple()
@@ -531,8 +537,8 @@ class TestPositionArchive(unittest.TestCase):
         # (legal moves exist for the learner color)
         masks = env.action_masks_learner()
         self.assertTrue(masks[1].any(), "restored position has no legal moves for learner")
-        
-    def test_archive_empty_falls_back(self):
+
+    def test_archive_empty_falls_back(self) -> None:
         """Empty archive falls back to fresh games."""
         from gotrain.selfplay import PositionArchive
         env = SelfPlayGo(num_envs=2, seed=0)
@@ -540,8 +546,8 @@ class TestPositionArchive(unittest.TestCase):
         obs, restored = env.reset_from_archive(np.array([0, 1]), archive)
         self.assertFalse(restored.any())
         self.assertEqual(obs.shape, (2, 6, 9, 9))
-        
-    def test_archive_fifo(self):
+
+    def test_archive_fifo(self) -> None:
         """Archive drops oldest when at capacity."""
         from gotrain.selfplay import PositionArchive
         from gotrain.rules import Board
@@ -554,15 +560,16 @@ class TestPositionArchive(unittest.TestCase):
         plies = sorted(p[2] for p in archive._positions)
         self.assertEqual(plies, [2, 3, 4])
 
+
 class TestWideArchitectures(unittest.TestCase):
-    def test_wide_param_count(self):
+    def test_wide_param_count(self) -> None:
         """GoNetWide has ~466K params (3.6x baseline)."""
         from gotrain.net_wide import GoNetWide
         net = GoNetWide()
         self.assertGreater(net.param_count(), 400000)
         self.assertLess(net.param_count(), 500000)
 
-    def test_pool_param_count(self):
+    def test_pool_param_count(self) -> None:
         """GoNetPool adds minimal params over baseline."""
         from gotrain.net_wide import GoNetPool
         from gotrain.net import GoNet
@@ -571,7 +578,7 @@ class TestWideArchitectures(unittest.TestCase):
         # Global path should add <15K params
         self.assertLess(pool.param_count() - base.param_count(), 15000)
 
-    def test_wide_forward(self):
+    def test_wide_forward(self) -> None:
         """All variants produce correct output shapes."""
         from gotrain.net_wide import GoNetWide, GoNetPool, GoNetWidePool
         x = torch.randn(2, 6, 9, 9)
@@ -582,7 +589,7 @@ class TestWideArchitectures(unittest.TestCase):
             # Value in [-1, 1] (tanh)
             self.assertTrue(((value >= -1) & (value <= 1)).all())
 
-    def test_pool_global_path(self):
+    def test_pool_global_path(self) -> None:
         """Global pooling path actually affects output (not a no-op)."""
         from gotrain.net_wide import GoNetPool
         net = GoNetPool()
@@ -603,7 +610,7 @@ class TestWideArchitectures(unittest.TestCase):
 class EyeFillTest(unittest.TestCase):
     """Own-eye exclusion: Board.is_eye_fill and selfplay.bot_mask."""
 
-    def eye_position(self):
+    def eye_position(self) -> Board:
         # Black wall around (4,4); black to move. (4,4) is black's eye.
         b = Board()
         for r, c in [(3, 4), (5, 4), (4, 3), (4, 5)]:
@@ -611,7 +618,7 @@ class EyeFillTest(unittest.TestCase):
         b.to_play = BLACK
         return b
 
-    def test_is_eye_fill(self):
+    def test_is_eye_fill(self) -> None:
         b = self.eye_position()
         self.assertTrue(b.is_eye_fill(4, 4, BLACK))
         self.assertFalse(b.is_eye_fill(3, 3, BLACK))  # empty neighbors
@@ -623,7 +630,7 @@ class EyeFillTest(unittest.TestCase):
         c.to_play = BLACK
         self.assertTrue(c.is_eye_fill(0, 0, BLACK))
 
-    def test_bot_mask_excludes_eye_fill_keeps_rest(self):
+    def test_bot_mask_excludes_eye_fill_keeps_rest(self) -> None:
         from gotrain.selfplay import bot_mask
         b = self.eye_position()
         self.assertTrue(legal_mask(b, BLACK)[4 * 9 + 4])  # truly legal...
@@ -632,7 +639,7 @@ class EyeFillTest(unittest.TestCase):
         self.assertTrue(m[81])  # pass always kept
         self.assertTrue(m[0])  # ordinary empty point kept
 
-    def test_bot_mask_keeps_capture_inside_territory(self):
+    def test_bot_mask_keeps_capture_inside_territory(self) -> None:
         # Killing an invasion always has an opponent neighbor, so the
         # capturing move must survive the filter.
         from gotrain.selfplay import bot_mask
@@ -645,7 +652,7 @@ class EyeFillTest(unittest.TestCase):
         m = bot_mask(b, BLACK)
         self.assertTrue(m[4 * 9 + 5])  # the capture stays available
 
-    def test_action_masks_learner_excludes_eye_fill(self):
+    def test_action_masks_learner_excludes_eye_fill(self) -> None:
         env = SelfPlayGo(num_envs=1, seed=0)
         env.boards[0] = self.eye_position()
         env.learner_color[0] = BLACK

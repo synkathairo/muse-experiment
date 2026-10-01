@@ -12,6 +12,7 @@ Usage:
     python -m gotrain.gtp --checkpoint runs/auto_pilot/snap_003000000.pt
     python -m gotrain.gtp --checkpoint runs/smoke/latest.pt --temperature 0.5
 """
+from __future__ import annotations
 
 import argparse
 import sys
@@ -23,10 +24,10 @@ from . import features, rules, selfplay, tactical
 from .net import GoNet, GoNetTactical
 from .net_aux import to_gonet_state_dict
 
-COLS = "ABCDEFGHJKLMNOPQRST"  # GTP skips 'I'
+COLS: str = "ABCDEFGHJKLMNOPQRST"  # GTP skips 'I'
 
 
-def to_gtp_vertex(move):
+def to_gtp_vertex(move: tuple[int, int] | None) -> str:
     """(r, c) with r=0 top -> GTP 'D4'; None -> 'pass'."""
     if move is None:
         return "pass"
@@ -34,7 +35,7 @@ def to_gtp_vertex(move):
     return f"{COLS[c]}{9 - r}"
 
 
-def from_gtp_vertex(s):
+def from_gtp_vertex(s: str) -> tuple[int, int] | None:
     """GTP 'D4'/'pass' -> (r, c) or None."""
     s = s.strip().lower()
     if s == "pass":
@@ -48,7 +49,7 @@ def from_gtp_vertex(s):
     return (r, c)
 
 
-def gtp_color(s):
+def gtp_color(s: str) -> int:
     s = s.strip().lower()
     if s in ("b", "black"):
         return rules.BLACK
@@ -58,14 +59,15 @@ def gtp_color(s):
 
 
 class GTPEngine:
-    def __init__(self, model, temperature=0.0, tactical=False):
-        self.model = model
+    def __init__(self, model: torch.nn.Module, temperature: float = 0.0,
+                 tactical: bool = False) -> None:
+        self.model: torch.nn.Module = model
         self.model.eval()
-        self.temperature = temperature
-        self.tactical = tactical
-        self.board = rules.Board(9)
+        self.temperature: float = temperature
+        self.tactical: bool = tactical
+        self.board: rules.Board = rules.Board(9)
 
-    def _encode(self, color):
+    def _encode(self, color: int) -> np.ndarray:
         if self.tactical:
             return tactical.encode_tactical(self.board, color)
         return features.encode(
@@ -76,7 +78,7 @@ class GTPEngine:
             ko_point=self.board.ko,
         )
 
-    def genmove(self, color):
+    def genmove(self, color: int) -> str:
         mask = selfplay.bot_mask(self.board, color)
         planes = self._encode(color)
         with torch.no_grad():
@@ -98,20 +100,20 @@ class GTPEngine:
         assert self.board.play(move, color), f"engine emitted illegal move {move}"
         return to_gtp_vertex(move)
 
-    def final_score(self):
+    def final_score(self) -> str:
         b, w = selfplay.score(self.board)
         if b > w:
             return f"B+{b - w:.1f}"
         return f"W+{w - b:.1f}"
 
 
-COMMANDS = [
+COMMANDS: list[str] = [
     "protocol_version", "name", "version", "known_command", "list_commands",
     "boardsize", "clear_board", "komi", "play", "genmove", "final_score", "quit",
 ]
 
 
-def serve(engine):
+def serve(engine: GTPEngine) -> None:
     for line in sys.stdin:
         line = line.strip()
         if not line or line.startswith("#"):
@@ -125,12 +127,12 @@ def serve(engine):
             args = parts[1:]
 
         # canonical GTP response form: "= [id] data" / "? [id] message"
-        def reply(data=""):
+        def reply(data: str = "") -> None:
             prefix = f"={cid}" if cid else "="
             sys.stdout.write(f"{prefix} {data}\n\n".rstrip() + "\n\n")
             sys.stdout.flush()
 
-        def err(msg):
+        def err(msg: str) -> None:
             prefix = f"?{cid}" if cid else "?"
             sys.stdout.write(f"{prefix} {msg}\n\n")
             sys.stdout.flush()
@@ -176,7 +178,7 @@ def serve(engine):
             err(f"internal error: {e}")
 
 
-def main():
+def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("--checkpoint", required=True)
     ap.add_argument("--temperature", type=float, default=0.0,

@@ -14,8 +14,10 @@ sampling. There is no behavior/optimization mismatch to fix.
 
 Run from weiqi/train/:  python -m unittest tests.test_masked_ppo -v
 """
+from __future__ import annotations
 
 import unittest
+from typing import cast
 
 import numpy as np
 import torch
@@ -26,10 +28,10 @@ from gotrain.ppo import PPOConfig, ppo_minibatch_update, _masked_logps_entropy
 from gotrain.train_selfplay import (masked_dist, sample_actions,
                                     greedy_actions, dirichlet_noised_dist)
 
-N_MOVES = 82
+N_MOVES: int = 82
 
 
-def random_masks(batch, min_legal=5, seed=0):
+def random_masks(batch: int, min_legal: int = 5, seed: int = 0) -> torch.Tensor:
     rng = np.random.RandomState(seed)
     masks = np.zeros((batch, N_MOVES), dtype=bool)
     for b in range(batch):
@@ -41,7 +43,7 @@ def random_masks(batch, min_legal=5, seed=0):
 
 
 class TestMaskedLogpsEntropy(unittest.TestCase):
-    def test_illegal_probs_exactly_zero_and_sum_to_one(self):
+    def test_illegal_probs_exactly_zero_and_sum_to_one(self) -> None:
         torch.manual_seed(0)
         B = 16
         logits = torch.randn(B, N_MOVES)
@@ -63,7 +65,7 @@ class TestMaskedLogpsEntropy(unittest.TestCase):
         self.assertTrue(torch.allclose(logps, manual, atol=1e-6))
         self.assertTrue(torch.isfinite(entropy).all())
 
-    def test_entropy_equals_legal_only_entropy(self):
+    def test_entropy_equals_legal_only_entropy(self) -> None:
         torch.manual_seed(1)
         B = 8
         logits = torch.randn(B, N_MOVES)
@@ -78,7 +80,7 @@ class TestMaskedLogpsEntropy(unittest.TestCase):
         expected = -(p * lp).sum(-1)
         self.assertTrue(torch.allclose(entropy, expected, atol=1e-6))
 
-    def test_masked_entropy_below_unmasked_when_mass_on_illegal(self):
+    def test_masked_entropy_below_unmasked_when_mass_on_illegal(self) -> None:
         # logits peaked on an ILLEGAL move: unmasked entropy is low (peaked),
         # masked entropy is computed over the legal remainder only.
         B = 4
@@ -98,7 +100,7 @@ class TestMaskedLogpsEntropy(unittest.TestCase):
         n_legal = masks.sum(-1).float()
         self.assertTrue((masked_ent <= (n_legal.log() + 1e-5)).all())
 
-    def test_illegal_logits_get_zero_gradient(self):
+    def test_illegal_logits_get_zero_gradient(self) -> None:
         """The mechanistic core: with everything masked, illegal logits get
         exactly zero gradient -- they are never trained, so the raw argmax
         being illegal ~80% of the time is untrained init noise, not a bug."""
@@ -122,7 +124,7 @@ class TestMaskedLogpsEntropy(unittest.TestCase):
 
 
 class TestMaskedSampling(unittest.TestCase):
-    def test_masked_dist_samples_only_legal(self):
+    def test_masked_dist_samples_only_legal(self) -> None:
         torch.manual_seed(5)
         B = 8
         logits = torch.randn(B, N_MOVES)
@@ -140,7 +142,7 @@ class TestMaskedSampling(unittest.TestCase):
                        .gather(2, a.unsqueeze(-1)).squeeze(-1))
         self.assertTrue(torch.allclose(lp, expected_lp, atol=1e-5))
 
-    def test_sample_actions_legal_and_finite(self):
+    def test_sample_actions_legal_and_finite(self) -> None:
         torch.manual_seed(7)
         net = GoNet()
         B = 4
@@ -153,7 +155,7 @@ class TestMaskedSampling(unittest.TestCase):
         self.assertTrue(torch.isfinite(logps).all())
         self.assertTrue(torch.isfinite(values).all())
 
-    def test_greedy_actions_argmax_over_legal(self):
+    def test_greedy_actions_argmax_over_legal(self) -> None:
         torch.manual_seed(9)
         net = GoNet()
         B = 4
@@ -167,12 +169,14 @@ class TestMaskedSampling(unittest.TestCase):
                 logits[b, illegal] = 1e6
         # monkeypatch-ish: call greedy_actions on wrapped logits via net hook
         orig_forward = net.forward
-        def patched(x):
+
+        def patched(x: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
             l, v = orig_forward(x)
             for b in range(B):
                 illegal = int(np.flatnonzero(~masks.numpy()[b])[0])
                 l[b, illegal] = 1e6
             return l, v
+
         net.forward = patched  # type: ignore
         try:
             a = greedy_actions(net, obs, masks).numpy()
@@ -182,7 +186,7 @@ class TestMaskedSampling(unittest.TestCase):
         self.assertTrue(all(m[b, a[b]] for b in range(B)),
                         "greedy argmax must be legal even when raw argmax is not")
 
-    def test_dirichlet_noise_supported_on_legal_only(self):
+    def test_dirichlet_noise_supported_on_legal_only(self) -> None:
         torch.manual_seed(11)
         B = 8
         logits = torch.randn(B, N_MOVES)
@@ -191,14 +195,16 @@ class TestMaskedSampling(unittest.TestCase):
         noise_mask = torch.ones(B, dtype=torch.bool)
         mixed = dirichlet_noised_dist(dist, masks, noise_mask,
                                       alpha=0.05, eps=0.25)
-        probs = mixed.probs
+        # Categorical.probs is a @lazy_property in torch; at runtime it is
+        # always a Tensor.
+        probs = cast("torch.Tensor", mixed.probs)
         self.assertTrue((probs[~masks] == 0.0).all())
         self.assertTrue(
             torch.allclose(probs.sum(-1), torch.ones(B), atol=1e-5))
 
 
 class TestPPOUpdateMasked(unittest.TestCase):
-    def test_ppo_minibatch_update_runs_and_stays_masked(self):
+    def test_ppo_minibatch_update_runs_and_stays_masked(self) -> None:
         torch.manual_seed(13)
         net = GoNet()
         opt = torch.optim.Adam(net.parameters(), lr=2.5e-4)

@@ -2,6 +2,7 @@
 
 Run from weiqi/train/:  python -m unittest tests.test_smoke -v
 """
+from __future__ import annotations
 
 import os
 import tempfile
@@ -20,11 +21,11 @@ REAL_GAME_SGF = '(;FF[4]\nCA[UTF-8]\nGM[1]\nDT[2025-03-12]\nPC[OGS: https://onli
 
 
 class TestNet(unittest.TestCase):
-    def test_param_count_locked(self):
+    def test_param_count_locked(self) -> None:
         self.assertEqual(net.GoNet().param_count(), net.EXPECTED_PARAMS)
         self.assertEqual(net.EXPECTED_PARAMS, 130522)
 
-    def test_forward_shapes(self):
+    def test_forward_shapes(self) -> None:
         m = net.GoNet()
         m.eval()
         with torch.no_grad():
@@ -33,14 +34,14 @@ class TestNet(unittest.TestCase):
         self.assertEqual(tuple(value.shape), (3,))
         self.assertTrue(torch.all(value >= -1.0) and torch.all(value <= 1.0))
 
-    def test_export_order_covers_all_params(self):
+    def test_export_order_covers_all_params(self) -> None:
         m = net.GoNet()
         total = sum(int(np.prod(shape)) for _, shape in net.EXPORT_ORDER)
         self.assertEqual(total, m.param_count())
 
 
 class TestFeatures(unittest.TestCase):
-    def test_planes(self):
+    def test_planes(self) -> None:
         own = np.zeros((9, 9), dtype=bool)
         opp = np.zeros((9, 9), dtype=bool)
         own[0, 0] = True   # top-left black
@@ -58,7 +59,7 @@ class TestFeatures(unittest.TestCase):
         self.assertEqual(p[5, 4, 4], 1.0)
         self.assertEqual(p[5].sum(), 1)
 
-    def test_move_index_roundtrip(self):
+    def test_move_index_roundtrip(self) -> None:
         self.assertEqual(features.move_to_index((0, 0)), 0)
         self.assertEqual(features.move_to_index((8, 8)), 80)
         self.assertEqual(features.move_to_index(None), 81)
@@ -67,7 +68,7 @@ class TestFeatures(unittest.TestCase):
 
 
 class TestRules(unittest.TestCase):
-    def test_capture(self):
+    def test_capture(self) -> None:
         b = rules.Board(9)
         # white stone at (1,1) surrounded on 3 sides, black plays the last liberty
         b.play((0, 1), rules.BLACK)
@@ -79,13 +80,13 @@ class TestRules(unittest.TestCase):
         self.assertTrue(b.play((2, 1), rules.BLACK))
         self.assertEqual(b.grid[1][1], rules.EMPTY)
 
-    def test_suicide_rejected(self):
+    def test_suicide_rejected(self) -> None:
         b = rules.Board(9)
         b.play((0, 1), rules.WHITE)
         b.play((1, 0), rules.WHITE)
         self.assertFalse(b.play((0, 0), rules.BLACK))
 
-    def test_simple_ko(self):
+    def test_simple_ko(self) -> None:
         # . B W .
         # B W . W
         # . B W .
@@ -109,41 +110,47 @@ class TestRules(unittest.TestCase):
 
 class TestSGF(unittest.TestCase):
     @unittest.skipIf(REAL_GAME_SGF is None, "no downloaded game embedded yet")
-    def test_real_game(self):
+    def test_real_game(self) -> None:
         g = sgf.parse_sgf(REAL_GAME_SGF)
         self.assertIsNotNone(g)
+        assert g is not None
         self.assertEqual(g.size, 9)
         self.assertGreater(len(g.moves), 10)
         # first coord 'aa' == (0,0) top-left; colors alternate
         colors = [c for c, _ in g.moves]
         self.assertTrue(all(c in ("B", "W") for c in colors))
 
-    def test_variation_ignored(self):
+    def test_variation_ignored(self) -> None:
         g = sgf.parse_sgf("(;GM[1]FF[4]SZ[9];B[aa](;W[bb])(;W[cc]))")
+        assert g is not None
         self.assertEqual(g.moves, [("B", (0, 0))])
 
-    def test_pass(self):
+    def test_pass(self) -> None:
         g = sgf.parse_sgf("(;GM[1]FF[4]SZ[9];B[aa];W[])")
+        assert g is not None
         self.assertEqual(g.moves, [("B", (0, 0)), ("W", None)])
 
-    def test_ogs_nested_main_line(self):
+    def test_ogs_nested_main_line(self) -> None:
         # OGS threads the main line through nested single-node parens.
         g = sgf.parse_sgf("(;GM[1]FF[4]SZ[9];B[ee](;W[gd](;B[fc](;W[gc]))))")
+        assert g is not None
         self.assertEqual(g.moves, [("B", (4, 4)), ("W", (3, 6)),
                                    ("B", (2, 5)), ("W", (2, 6))])
 
-    def test_ogs_quoted_values(self):
+    def test_ogs_quoted_values(self) -> None:
         g = sgf.parse_sgf("(;GM[1]FF[4]SZ[9]RE['B+R']PB['foo'];B[aa])")
+        assert g is not None
         self.assertEqual(g.result, "B+R")
         self.assertEqual(g.black_name, "foo")
 
-    def test_timeout_ogs_notation(self):
+    def test_timeout_ogs_notation(self) -> None:
         self.assertTrue(sgf.is_timeout("W+T"))
         self.assertTrue(sgf.is_timeout("B+Time"))
         self.assertFalse(sgf.is_timeout("B+2.5"))
 
-    def test_handicap_white_to_move(self):
+    def test_handicap_white_to_move(self) -> None:
         g = sgf.parse_sgf("(;GM[1]FF[4]SZ[9]HA[2]AB[cc][gg]RE[W+R];W[ee];B[aa])")
+        assert g is not None
         self.assertEqual(g.to_play, "W")
         pairs = dataset.game_to_pairs(g)
         # white's move replays; the pair is from white's perspective, and
@@ -153,7 +160,7 @@ class TestSGF(unittest.TestCase):
 
 
 class TestExport(unittest.TestCase):
-    def test_roundtrip_byte_exact(self):
+    def test_roundtrip_byte_exact(self) -> None:
         torch.manual_seed(0)
         m = net.GoNet()
         m.eval()

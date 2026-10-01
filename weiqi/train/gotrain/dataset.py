@@ -17,6 +17,7 @@ Usage:
 
 Writes data/ds_full/{train,val}_{x,y,z,zm}.npy (memmap-friendly) + meta.json.
 """
+from __future__ import annotations
 
 import argparse
 import hashlib
@@ -27,16 +28,20 @@ import numpy as np
 
 from . import features, rules, sgf
 
-MIN_MOVES = 10
-CHUNK_POSITIONS = 100_000
+MIN_MOVES: int = 10
+CHUNK_POSITIONS: int = 100_000
+
+# One training pair: (6-plane obs, move index, value target, value mask).
+Pair = tuple[np.ndarray, int, float, float]
 
 
-def game_split(source_label, game_idx, val_frac, seed):
+def game_split(source_label: str, game_idx: int, val_frac: float,
+               seed: int) -> bool:
     h = hashlib.md5(f"{seed}|{source_label}|{game_idx}".encode()).hexdigest()
     return (int(h[:8], 16) / 0xFFFFFFFF) < val_frac
 
 
-def game_to_pairs(game):
+def game_to_pairs(game: sgf.Game) -> list[Pair]:
     """Replay a game -> list of (planes, move_idx, z, zm). Truncates on illegal move."""
     board = rules.Board(9)
     for r, c in game.setup_black:
@@ -45,7 +50,7 @@ def game_to_pairs(game):
         board.grid[r][c] = rules.WHITE
     board.to_play = rules.BLACK if game.to_play == "B" else rules.WHITE
     z_black = sgf.result_to_z(game.result)
-    pairs = []
+    pairs: list[Pair] = []
     for color_s, move in game.moves:
         color = rules.BLACK if color_s == "B" else rules.WHITE
         if color != board.to_play:
@@ -72,23 +77,23 @@ def game_to_pairs(game):
 class ChunkWriter:
     """Accumulate positions; flush to .npz chunks to bound RAM."""
 
-    def __init__(self, chunk_dir, prefix):
-        self.chunk_dir = chunk_dir
-        self.prefix = prefix
-        self.bufs = []
-        self.n_buf = 0
-        self.chunk_idx = 0
-        self.total = 0
+    def __init__(self, chunk_dir: str, prefix: str) -> None:
+        self.chunk_dir: str = chunk_dir
+        self.prefix: str = prefix
+        self.bufs: list[Pair] = []
+        self.n_buf: int = 0
+        self.chunk_idx: int = 0
+        self.total: int = 0
         os.makedirs(chunk_dir, exist_ok=True)
 
-    def add(self, pairs):
+    def add(self, pairs: list[Pair]) -> None:
         for planes, mi, z, zm in pairs:
             self.bufs.append((planes, mi, z, zm))
             self.n_buf += 1
         if self.n_buf >= CHUNK_POSITIONS:
             self.flush()
 
-    def flush(self):
+    def flush(self) -> None:
         if not self.n_buf:
             return
         n = self.n_buf
@@ -108,7 +113,7 @@ class ChunkWriter:
         self.bufs = []
         self.n_buf = 0
 
-    def chunk_paths(self):
+    def chunk_paths(self) -> list[str]:
         self.flush()
         return [
             os.path.join(self.chunk_dir, f"{self.prefix}_{i:04d}.npz")
@@ -116,7 +121,7 @@ class ChunkWriter:
         ]
 
 
-def concat_chunks(chunk_paths, out_dir, split):
+def concat_chunks(chunk_paths: list[str], out_dir: str, split: str) -> int:
     """Concatenate chunk npzs into final .npy files (proper format, mmap-able)."""
     from numpy.lib.format import open_memmap
     total = 0
@@ -146,7 +151,8 @@ def concat_chunks(chunk_paths, out_dir, split):
     return total
 
 
-def build_dataset(sgf_paths, out_dir, val_frac=0.02, seed=1234):
+def build_dataset(sgf_paths: list[str], out_dir: str, val_frac: float = 0.02,
+                  seed: int = 1234) -> dict:
     os.makedirs(out_dir, exist_ok=True)
     chunk_dir = os.path.join(out_dir, "_chunks")
     train_w = ChunkWriter(chunk_dir, "train")
@@ -195,7 +201,7 @@ def build_dataset(sgf_paths, out_dir, val_frac=0.02, seed=1234):
     return meta
 
 
-def main():
+def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("--sgf", nargs="+", required=True, help=".sgf files / dirs / .zips")
     ap.add_argument("--out", required=True)

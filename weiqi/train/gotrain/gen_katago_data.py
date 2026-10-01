@@ -3,19 +3,13 @@
 Pipeline:
   1. KataGo self-play games -> SGF files
   2. Replay each position through our Board -> 6-plane obs (matches training)
-  3. Query `katago analysis` per position -> policy distribution + value
-  4. Save NPZ: obs (N,6,9,9), policy (N,82), value (N,), mask (N,82)
+  3. KataGo analysis (subprocess, JSON protocol) -> policy + value targets
+  4. Save compressed npz: obs, policy (82), value, mask (82)
 
-Usage (on Mac):
-  # Step 1: generate games (or use existing SGFs)
-  katago selfplay -model <9x9-model> -config <selfplay.cfg> \
-      -output-dir /tmp/kg_games -num-games 200
-
-  # Step 2: build dataset
-  python -m gotrain.gen_katago_data --sgf-dir /tmp/kg_games \
-      --katago katago --model <model> --config <analysis.cfg> \
-      --max-visits 100 --out /tmp/katago_positions.npz
+CLOSED (2026-09-26): the 130K student can't absorb the 10.5M-transformer
+teacher — probe top-1 29.1% vs >40% gate. Kept for the record.
 """
+from __future__ import annotations
 
 import argparse
 import glob
@@ -23,6 +17,7 @@ import json
 import os
 import subprocess
 import sys
+from typing import NoReturn
 
 import numpy as np
 
@@ -30,13 +25,13 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from gotrain.selfplay import observe, BLACK, WHITE
 from gotrain.rules import Board
 
-PASS = 81
+PASS: int = 81
 
 
-def parse_sgf_moves(sgf_text):
+def parse_sgf_moves(sgf_text: str) -> list[tuple[int, tuple[int, int] | None]]:
     """Extract move list as (color, (r, c) or None for pass)."""
     import re
-    moves = []
+    moves: list[tuple[int, tuple[int, int] | None]] = []
     # Match ;B[aa] or ;W[aa] or ;B[] (pass)
     for m in re.finditer(r';([BW])\[([a-s]{0,2})\]', sgf_text):
         color = BLACK if m.group(1) == 'B' else WHITE
@@ -50,7 +45,8 @@ def parse_sgf_moves(sgf_text):
     return moves
 
 
-def board_to_katago_query(board, color, qid, komi=7.5):
+def board_to_katago_query(board: Board, color: int, qid: str,
+                          komi: float = 7.5) -> NoReturn:
     """Build a katago analysis query for the current position."""
     # KataGo wants moves in GTP coordinates
     moves = []
@@ -59,7 +55,7 @@ def board_to_katago_query(board, color, qid, komi=7.5):
     raise NotImplementedError("use replay loop below")
 
 
-def main():
+def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("--sgf-dir", required=True)
     ap.add_argument("--katago", default="katago")
@@ -77,13 +73,13 @@ def main():
         sys.exit(1)
 
     # Step 1: replay games, collect (obs, gtp_moves_so_far, color_to_move)
-    positions = []  # (obs, moves_gtp, color)
+    positions: list = []  # (obs, moves_gtp, color, mask)
     for sf in sgf_files:
         with open(sf) as f:
             sgf = f.read()
         moves = parse_sgf_moves(sgf)
         board = Board()
-        history_gtp = []
+        history_gtp: list[tuple[str, int]] = []
         for color, rc in moves:
             if len(positions) >= args.max_positions:
                 break
@@ -112,7 +108,7 @@ def main():
     print(f"Collected {len(positions)} positions")
 
     # Step 2: build analysis queries
-    queries = []
+    queries: list = []
     for i, (obs, hist, color, mask) in enumerate(positions):
         qmoves = [[gtp, "B" if c == BLACK else "W"] for gtp, c in hist]
         queries.append({
@@ -185,7 +181,7 @@ def main():
     print(f"Saved {args.out}: obs{obs_arr.shape} policy{policy_arr.shape}")
 
 
-def gtp_to_idx(gtp):
+def gtp_to_idx(gtp: str) -> int:
     if gtp.lower() == "pass":
         return PASS
     col = ord(gtp[0].upper()) - ord('A')

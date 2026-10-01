@@ -9,6 +9,7 @@ right. The Rust engine (weiqi/engine) is diffed too when cargo is available.
 
 Run from weiqi/train/:  python -m unittest tests.test_rules_fuzz -v
 """
+from __future__ import annotations
 
 import os
 import random
@@ -21,15 +22,15 @@ from gotrain import selfplay
 from tests import ref_rules
 from tests.ref_rules import RefBoard
 
-ENGINE_DIR = os.path.join(os.path.dirname(__file__), "..", "..", "engine")
-DRIVER_SRC = os.path.join(ENGINE_DIR, "examples", "fuzz_driver.rs")
+ENGINE_DIR: str = os.path.join(os.path.dirname(__file__), "..", "..", "engine")
+DRIVER_SRC: str = os.path.join(ENGINE_DIR, "examples", "fuzz_driver.rs")
 
 
-def idx(r, c):
+def idx(r: int, c: int) -> int:
     return r * 9 + c
 
 
-KO_FIGHT = [
+KO_FIGHT: list = [
     idx(0, 1), idx(1, 1), idx(1, 0), idx(3, 1), idx(1, 2), idx(2, 0),
     idx(8, 8), idx(2, 2), idx(2, 1),          # B captures -> ko at (1,1)
     ("try", idx(1, 1)),                        # W immediate recapture: ILLEGAL
@@ -37,19 +38,19 @@ KO_FIGHT = [
     ("try", idx(2, 1)),                        # B immediate recapture: ILLEGAL
     "pass", "pass",
 ]
-SNAPBACK = [
+SNAPBACK: list = [
     idx(8, 8), idx(1, 1), idx(0, 1), idx(1, 3), idx(0, 3), idx(3, 2),
     idx(2, 2), idx(2, 1), idx(8, 7), idx(2, 3), idx(8, 6), idx(0, 2),
     idx(1, 2),   # B captures W(0,2): 1 stone, 2-stone group -> NO ko
     idx(0, 2),   # W recaptures: takes B(1,2)+B(2,2), LEGAL (not ko)
     "pass", "pass",
 ]
-SEKI_NEUTRAL = [
+SEKI_NEUTRAL: list = [
     idx(0, 0), idx(0, 3), idx(0, 1), idx(0, 2), idx(1, 0), idx(1, 3),
     idx(2, 0), idx(2, 3), idx(2, 1), idx(2, 2),
     "pass", "pass",
 ]
-SUICIDE = [
+SUICIDE: list = [
     idx(8, 8), idx(1, 1), idx(8, 7), idx(1, 2), idx(8, 6), idx(1, 3),
     idx(8, 5), idx(2, 1), idx(8, 4), idx(2, 3), idx(8, 3), idx(3, 1),
     idx(8, 2), idx(3, 2), idx(8, 1), idx(3, 3),
@@ -57,7 +58,7 @@ SUICIDE = [
     idx(0, 0), idx(0, 8),
     "pass", "pass",
 ]
-FIXTURES = {
+FIXTURES: dict[str, list] = {
     "ko_fight": KO_FIGHT,
     "snapback": SNAPBACK,
     "seki_neutral": SEKI_NEUTRAL,
@@ -65,15 +66,15 @@ FIXTURES = {
 }
 
 
-def py_stones(board):
+def py_stones(board: Board) -> str:
     return "".join(str(board.grid[r][c]) for r in range(9) for c in range(9))
 
 
-def py_ko(board):
+def py_ko(board: Board) -> str:
     return "-" if board.ko is None else str(board.ko[0] * 9 + board.ko[1])
 
 
-def check_two_way(moves):
+def check_two_way(moves: list) -> None:
     """Play `moves` on gotrain Board and RefBoard; assert full agreement."""
     pyb, refb = Board(9), RefBoard()
     color = BLACK
@@ -93,6 +94,7 @@ def check_two_way(moves):
             assert refb.play(None, color) == 0
             got = 0
         else:
+            assert isinstance(mv, int)
             assert pyb.play((mv // 9, mv % 9), color), f"py rejects {mv}"
             got = refb.play(mv, color)
         foe_after = sum(
@@ -119,16 +121,17 @@ def check_two_way(moves):
 
 
 class TestRulesFuzz(unittest.TestCase):
-    def test_tricky_positions(self):
+    def test_tricky_positions(self) -> None:
         for name, moves in FIXTURES.items():
             with self.subTest(name=name):
                 check_two_way(moves)
 
-    def test_random_games(self):
+    def test_random_games(self) -> None:
         rng = random.Random(20260924)
         for g in range(4):
             b, color = Board(9), BLACK
-            moves, consec, plies = [], 0, 0
+            moves: list = []
+            consec, plies = 0, 0
             while consec < 2 and plies < 500:
                 legal = [i for i in range(81) if b.is_legal(i // 9, i % 9, color)]
                 if not legal or plies > 120 or rng.random() < 0.05:
@@ -145,7 +148,7 @@ class TestRulesFuzz(unittest.TestCase):
             with self.subTest(game=g):
                 check_two_way(moves)
 
-    def test_rust_engine_agrees(self):
+    def test_rust_engine_agrees(self) -> None:
         """Three-way check against weiqi/engine via the fuzz_driver example.
         Skipped when cargo is unavailable."""
         cargo = shutil.which("cargo") or os.path.expanduser("~/.cargo/bin/cargo")
@@ -157,7 +160,7 @@ class TestRulesFuzz(unittest.TestCase):
         self.assertEqual(build.returncode, 0, build.stderr[-2000:])
         driver = os.path.join(
             ENGINE_DIR, "target", "debug", "examples", "fuzz_driver")
-        lines = []
+        lines: list[str] = []
         for moves in FIXTURES.values():
             lines.append("new")
             for mv in moves:

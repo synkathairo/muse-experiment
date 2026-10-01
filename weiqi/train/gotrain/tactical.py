@@ -30,6 +30,9 @@ copying the 6 existing input-channel weights and ZERO-initializing the 7 new
 ones, so the branched policy is bit-identical to the source until training
 touches the new channels (verified by tests/test_tactical.py).
 """
+from __future__ import annotations
+
+from typing import Any
 
 import numpy as np
 import torch
@@ -37,15 +40,15 @@ import torch
 from . import rules
 from .net import GoNetTactical
 
-N_TAC_PLANES = 13
-N_NEW_PLANES = 7  # planes 6..12
+N_TAC_PLANES: int = 13
+N_NEW_PLANES: int = 7  # planes 6..12
 
 # 15.5M baseline checkpoint (full training checkpoint, plain GoNet).
-BASE_CHECKPOINT = "/home/hatch/workspace/user/files/latest_smoke_15m.pt"
-BASE_STEP = 15503360
+BASE_CHECKPOINT: str = "/home/hatch/workspace/user/files/latest_smoke_15m.pt"
+BASE_STEP: int = 15503360
 
 
-def encode_tactical(board, color):
+def encode_tactical(board: rules.Board, color: int) -> np.ndarray:
     """(13,9,9) float32 planes from `color`-to-move's perspective."""
     planes = np.zeros((N_TAC_PLANES, 9, 9), dtype=np.float32)
     own = board.stones(color)
@@ -70,7 +73,9 @@ def encode_tactical(board, color):
     return planes
 
 
-def _migrate_adam_state(src_opt_sd, src_sd, model, opt):
+def _migrate_adam_state(src_opt_sd: dict | None, src_sd: dict,
+                        model: torch.nn.Module,
+                        opt: torch.optim.Optimizer) -> None:
     """Copy Adam moments from a source optimizer state dict into `opt`.
 
     `src_sd` is the source model's state dict (ordered); `model` is the
@@ -88,7 +93,7 @@ def _migrate_adam_state(src_opt_sd, src_sd, model, opt):
     # optimizer state keys are indices into the source model's parameters()
     # order, which matches state_dict() order for these modules.
     tgt_index = {n: i for i, n in enumerate(tgt_names)}
-    new_state = {}
+    new_state: dict[int, dict[str, Any]] = {}
     for src_idx, name in enumerate(src_names):
         if src_idx not in src_state:
             continue
@@ -98,7 +103,7 @@ def _migrate_adam_state(src_opt_sd, src_sd, model, opt):
         st = src_state[src_idx]
         if name == "conv1.weight":
             # Expand moments from 6 to 13 input channels.
-            migrated = {}
+            migrated: dict[str, Any] = {}
             for k, v in st.items():
                 if isinstance(v, torch.Tensor) and v.shape == src_sd[name].shape:
                     nv = torch.zeros_like(model.state_dict()[name])
@@ -125,8 +130,10 @@ def _migrate_adam_state(src_opt_sd, src_sd, model, opt):
                          "param_groups": opt.state_dict()["param_groups"]})
 
 
-def branch_checkpoint(src_path=BASE_CHECKPOINT, dst_path=None, seed=7,
-                      total_steps=None, lr=1e-4):
+def branch_checkpoint(src_path: str = BASE_CHECKPOINT,
+                      dst_path: str | None = None, seed: int = 7,
+                      total_steps: int | None = None,
+                      lr: float = 1e-4) -> tuple[str, GoNetTactical]:
     """Branch a 6-plane GoNet training checkpoint into a 13-plane training
     checkpoint for GoNetTactical, zero-initializing the 7 new input channels.
 

@@ -9,6 +9,7 @@ Usage:
     python -m gotrain.mcts_gtp --checkpoint runs/smoke/latest.pt \
         --sims 100 --batch 16
 """
+from __future__ import annotations
 
 import argparse
 import sys
@@ -22,7 +23,7 @@ from .net import GoNet
 from .net_aux import to_gonet_state_dict
 
 
-def pick_device():
+def pick_device() -> torch.device:
     if torch.cuda.is_available():
         return torch.device("cuda")
     mps = getattr(torch.backends, "mps", None)
@@ -32,12 +33,13 @@ def pick_device():
 
 
 class MCTSEngine:
-    def __init__(self, model, device, cfg):
-        self.searcher = Searcher(model, device, cfg)
-        self.board = rules.Board(9)
-        self.passes = 0  # consecutive passes so far (search terminal state)
+    def __init__(self, model: torch.nn.Module, device: torch.device,
+                 cfg: SearchConfig) -> None:
+        self.searcher: Searcher = Searcher(model, device, cfg)
+        self.board: rules.Board = rules.Board(9)
+        self.passes: int = 0  # consecutive passes so far (search terminal state)
 
-    def genmove(self, color):
+    def genmove(self, color: int) -> str:
         assert color == self.board.to_play, "engine/arbiter desync"
         m = self.searcher.search(self.board, self.passes)
         move = None if m == 81 else divmod(m, 9)
@@ -46,13 +48,13 @@ class MCTSEngine:
         return to_gtp_vertex(move)
 
 
-COMMANDS = [
+COMMANDS: list[str] = [
     "protocol_version", "name", "version", "known_command", "list_commands",
     "boardsize", "clear_board", "komi", "play", "genmove", "quit",
 ]
 
 
-def serve(engine):
+def serve(engine: MCTSEngine) -> None:
     for line in sys.stdin:
         line = line.strip()
         if not line or line.startswith("#"):
@@ -65,12 +67,12 @@ def serve(engine):
         else:
             args = parts[1:]
 
-        def reply(data=""):
+        def reply(data: str = "") -> None:
             prefix = f"={cid}" if cid else "="
             sys.stdout.write(f"{prefix} {data}\n\n".rstrip() + "\n\n")
             sys.stdout.flush()
 
-        def err(msg):
+        def err(msg: str) -> None:
             prefix = f"?{cid}" if cid else "?"
             sys.stdout.write(f"{prefix} {msg}\n\n")
             sys.stdout.flush()
@@ -117,7 +119,7 @@ def serve(engine):
             err(f"internal error: {e}")
 
 
-def main():
+def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("--checkpoint", required=True)
     ap.add_argument("--sims", type=int, default=100)

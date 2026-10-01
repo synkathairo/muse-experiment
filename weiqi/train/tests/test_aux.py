@@ -2,6 +2,7 @@
 
 Run from weiqi/train/:  python -m unittest tests.test_aux -v
 """
+from __future__ import annotations
 
 import unittest
 
@@ -19,7 +20,7 @@ from gotrain.train_selfplay import (attach_finished_game_labels, aux_update,
                                     random_opponent)
 
 
-def play_moves(moves):
+def play_moves(moves: list[tuple[int, int, int]]) -> Board:
     """Board with the given [(color, r, c), ...] stones played in order."""
     b = Board(9)
     for color, r, c in moves:
@@ -28,21 +29,21 @@ def play_moves(moves):
 
 
 class TestOwnershipLabels(unittest.TestCase):
-    def test_empty_board(self):
+    def test_empty_board(self) -> None:
         own = ownership_labels(Board(9))
         self.assertEqual(own.shape, (81,))
         self.assertTrue((own == 0).all())
         # margin = 0 - (0 + 7.5)
         self.assertAlmostEqual(margin_label(Board(9)), -7.5)
 
-    def test_single_stone_owns_everything(self):
+    def test_single_stone_owns_everything(self) -> None:
         b = play_moves([(BLACK, 0, 0)])
         own = ownership_labels(b)
         # the one empty region borders only black -> all black territory
         self.assertTrue((own == 1).all())
         self.assertAlmostEqual(margin_label(b), 81 - 7.5)
 
-    def test_two_stones_neutral_region(self):
+    def test_two_stones_neutral_region(self) -> None:
         b = play_moves([(BLACK, 0, 0), (WHITE, 8, 8)])
         own = ownership_labels(b)
         self.assertEqual(own[0], 1)      # black stone
@@ -52,7 +53,7 @@ class TestOwnershipLabels(unittest.TestCase):
         self.assertTrue((np.abs(own[1:80]) <= 1).all())
         self.assertAlmostEqual(margin_label(b), 1 - (1 + 7.5))
 
-    def test_enclosed_corner_territory(self):
+    def test_enclosed_corner_territory(self) -> None:
         # black wall encloses the 2x2 corner (0..1, 0..1)
         wall = [(BLACK, 2, 0), (BLACK, 2, 1), (BLACK, 2, 2),
                 (BLACK, 0, 2), (BLACK, 1, 2)]
@@ -66,10 +67,10 @@ class TestOwnershipLabels(unittest.TestCase):
         # margin: black 5 stones + 4 terr; white 1 stone; komi 7.5
         self.assertAlmostEqual(margin_label(b), 9 - (1 + 7.5))
 
-    def test_margin_consistent_with_score(self):
+    def test_margin_consistent_with_score(self) -> None:
         rng = np.random.default_rng(0)
         for _ in range(5):
-            moves = []
+            moves: list[tuple[int, int, int]] = []
             cells = [(r, c) for r in range(9) for c in range(9)]
             rng.shuffle(cells)
             for k, (r, c) in enumerate(cells[:20]):
@@ -82,7 +83,7 @@ class TestOwnershipLabels(unittest.TestCase):
 
 
 class TestPerspective(unittest.TestCase):
-    def test_black_passthrough_white_flip(self):
+    def test_black_passthrough_white_flip(self) -> None:
         own = np.array([1.0, -1.0, 0.0])
         o, m = to_learner_perspective(own, 3.5, BLACK)
         self.assertTrue(np.array_equal(o, own) and m == 3.5)
@@ -91,7 +92,7 @@ class TestPerspective(unittest.TestCase):
 
 
 class TestGoNetAux(unittest.TestCase):
-    def test_forward_shapes(self):
+    def test_forward_shapes(self) -> None:
         torch.manual_seed(0)
         aux = GoNetAux()
         x = torch.randn(2, 6, 9, 9)
@@ -103,7 +104,7 @@ class TestGoNetAux(unittest.TestCase):
         self.assertEqual(margin.shape, (2,))
         self.assertTrue(bool(((own >= -1) & (own <= 1)).all()))  # tanh
 
-    def test_policy_value_match_locked_trunk(self):
+    def test_policy_value_match_locked_trunk(self) -> None:
         """GoNetAux(x)[:2] == GoNet-with-same-trunk-weights(x): the wrapper
         must not change what the locked net computes."""
         torch.manual_seed(1)
@@ -116,10 +117,10 @@ class TestGoNetAux(unittest.TestCase):
         self.assertTrue(torch.allclose(la, lg, atol=1e-6))
         self.assertTrue(torch.allclose(va, vg, atol=1e-6))
 
-    def test_trunk_param_count_unchanged(self):
+    def test_trunk_param_count_unchanged(self) -> None:
         self.assertEqual(GoNetAux().trunk.param_count(), EXPECTED_PARAMS)
 
-    def test_trunk_resume_from_gonet(self):
+    def test_trunk_resume_from_gonet(self) -> None:
         torch.manual_seed(2)
         g = GoNet()
         aux = GoNetAux()
@@ -130,7 +131,7 @@ class TestGoNetAux(unittest.TestCase):
         for k, v in g.state_dict().items():
             self.assertTrue(torch.equal(aux.state_dict()["trunk." + k], v))
 
-    def test_gonet_loader_accepts_aux_checkpoint(self):
+    def test_gonet_loader_accepts_aux_checkpoint(self) -> None:
         torch.manual_seed(3)
         aux = GoNetAux()
         g = GoNet()
@@ -143,7 +144,7 @@ class TestGoNetAux(unittest.TestCase):
 
 
 class TestAuxUpdate(unittest.TestCase):
-    def test_loss_decreases(self):
+    def test_loss_decreases(self) -> None:
         torch.manual_seed(4)
         aux = GoNetAux()
         opt = torch.optim.Adam(aux.parameters(), lr=3e-3)
@@ -168,7 +169,7 @@ class TestAuxUpdate(unittest.TestCase):
 
 
 class TestLabelPlumbing(unittest.TestCase):
-    def test_attach_finished_game_labels(self):
+    def test_attach_finished_game_labels(self) -> None:
         # tiny max_plies so games finish fast; labels must attach to exactly
         # the finished game's steps, with one margin value per game
         env = SelfPlayGo(num_envs=2, seed=0, max_plies=12,
@@ -178,7 +179,7 @@ class TestLabelPlumbing(unittest.TestCase):
         b_own = torch.zeros(T, 2, N_POINTS)
         b_margin = torch.zeros(T, 2)
         b_valid = torch.zeros(T, 2, dtype=torch.bool)
-        ep_steps = [[], []]
+        ep_steps: list[list[int]] = [[], []]
         for t in range(T):
             for i in range(2):
                 ep_steps[i].append(t)
@@ -207,7 +208,7 @@ class TestTrunkMappedOptimizerResume(unittest.TestCase):
     plain net's params, so load_ckpt must migrate its Adam state onto the
     trunk instead of failing with a param-group size mismatch."""
 
-    def _plain_checkpoint(self, path):
+    def _plain_checkpoint(self, path: str) -> dict:
         from gotrain.train_selfplay import save_ckpt
         gonet = GoNet()
         opt = torch.optim.Adam(gonet.parameters(), lr=2.5e-4)
@@ -222,7 +223,7 @@ class TestTrunkMappedOptimizerResume(unittest.TestCase):
                   snap_ptr=9, hparams={"lr": 2.5e-4, "train_komi": 6.5})
         return old_opt_sd
 
-    def test_optimizer_state_migrated_onto_trunk(self):
+    def test_optimizer_state_migrated_onto_trunk(self) -> None:
         import os
         import tempfile
         from gotrain.train_selfplay import load_ckpt

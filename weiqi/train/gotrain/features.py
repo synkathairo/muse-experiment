@@ -14,13 +14,21 @@ The Rust engine (weiqi/engine) must encode these bit-identically; golden
 vectors in weiqi/golden/ pin the agreement.
 """
 
+from __future__ import annotations
+
 import numpy as np
 
-N = 9
-N_PLANES = 6
+N: int = 9
+N_PLANES: int = 6
 
 
-def encode(own, opp, last_move=None, black_to_move=True, ko_point=None):
+def encode(
+    own: np.ndarray,
+    opp: np.ndarray,
+    last_move: tuple[int, int] | None = None,
+    black_to_move: bool = True,
+    ko_point: tuple[int, int] | None = None,
+) -> np.ndarray:
     """Build the 6-plane input.
 
     own, opp: (9,9) bool arrays. last_move / ko_point: (row, col) or None.
@@ -40,14 +48,14 @@ def encode(own, opp, last_move=None, black_to_move=True, ko_point=None):
     return planes
 
 
-def move_to_index(move):
+def move_to_index(move: tuple[int, int] | None) -> int:
     """move: (row, col) or None (pass) -> 0..81."""
     if move is None:
         return 81
     return move[0] * N + move[1]
 
 
-def index_to_move(idx):
+def index_to_move(idx: int) -> tuple[int, int] | None:
     """0..81 -> (row, col) or None (pass)."""
     if idx == 81:
         return None

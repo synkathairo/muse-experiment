@@ -21,6 +21,7 @@ Conventions (shared with gotrain.train_selfplay):
   - rewards are +/-1 at game end, 0 elsewhere; the value head's tanh output
     already lives in [-1, 1], so no value rescaling is needed.
 """
+from __future__ import annotations
 
 from dataclasses import dataclass
 
@@ -46,8 +47,12 @@ class PPOConfig:
     target_kl: float | None = None  # if set, stop epochs early when approx KL exceeds this
 
 
-def compute_gae(rewards, values, terms, truncs, next_value, next_term,
-                next_trunc=None, gamma=0.99, gae_lambda=0.95):
+def compute_gae(rewards: torch.Tensor, values: torch.Tensor,
+                terms: torch.Tensor, truncs: torch.Tensor,
+                next_value: torch.Tensor, next_term: torch.Tensor,
+                next_trunc: torch.Tensor | None = None,
+                gamma: float = 0.99, gae_lambda: float = 0.95
+                ) -> tuple[torch.Tensor, torch.Tensor]:
     """Generalized Advantage Estimation over a (T, N) rollout.
 
     rewards/values/terms/truncs: (T, N) tensors. next_value/next_term/next_trunc: (N,).
@@ -83,7 +88,9 @@ def compute_gae(rewards, values, terms, truncs, next_value, next_term,
     return advantages, returns
 
 
-def _masked_logps_entropy(logits, actions, masks):
+def _masked_logps_entropy(logits: torch.Tensor, actions: torch.Tensor,
+                          masks: torch.Tensor
+                          ) -> tuple[torch.Tensor, torch.Tensor]:
     """Log-probs of taken actions + entropy under the legal-move mask.
 
     logits: (B, 82), actions: (B,) int64, masks: (B, 82) bool.
@@ -101,15 +108,21 @@ def _masked_logps_entropy(logits, actions, masks):
 
 
 @torch.no_grad()
-def evaluate_actions(model, obs, actions, masks):
+def evaluate_actions(model: torch.nn.Module, obs: torch.Tensor,
+                     actions: torch.Tensor, masks: torch.Tensor
+                     ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
     """Current policy's log-probs, entropy, and value for stored actions."""
     logits, values = model(obs)
     logps, entropy = _masked_logps_entropy(logits, actions, masks)
     return logps, entropy, values
 
 
-def ppo_minibatch_update(model, optimizer, cfg, b_obs, b_actions, b_logps,
-                         b_adv, b_ret, b_values, b_masks):
+def ppo_minibatch_update(model: torch.nn.Module, optimizer: torch.optim.Optimizer,
+                         cfg: PPOConfig, b_obs: torch.Tensor,
+                         b_actions: torch.Tensor, b_logps: torch.Tensor,
+                         b_adv: torch.Tensor, b_ret: torch.Tensor,
+                         b_values: torch.Tensor, b_masks: torch.Tensor
+                         ) -> dict[str, float]:
     """One SGD step on a minibatch. Returns dict of mean stats."""
     logits, new_values = model(b_obs)
     new_logps, entropy = _masked_logps_entropy(logits, b_actions, b_masks)
@@ -155,8 +168,12 @@ def ppo_minibatch_update(model, optimizer, cfg, b_obs, b_actions, b_logps,
     }
 
 
-def ppo_update(model, optimizer, cfg, obs, actions, logps, advantages, returns,
-               values, masks, lr_now=None):
+def ppo_update(model: torch.nn.Module, optimizer: torch.optim.Optimizer,
+               cfg: PPOConfig, obs: torch.Tensor, actions: torch.Tensor,
+               logps: torch.Tensor, advantages: torch.Tensor,
+               returns: torch.Tensor, values: torch.Tensor,
+               masks: torch.Tensor, lr_now: float | None = None
+               ) -> dict[str, float | bool]:
     """Full PPO update: `update_epochs` shuffled minibatch passes over the batch.
 
     All inputs are flat (B, ...) tensors on the model's device. Returns a dict
@@ -169,7 +186,7 @@ def ppo_update(model, optimizer, cfg, obs, actions, logps, advantages, returns,
             pg["lr"] = lr_now
 
     B = obs.shape[0]
-    stats_acc = {}
+    stats_acc: dict[str, float] = {}
     n_mb = 0
     early_stop = False
     for _ in range(cfg.update_epochs):
@@ -188,12 +205,12 @@ def ppo_update(model, optimizer, cfg, obs, actions, logps, advantages, returns,
                 break
         if early_stop:
             break
-    stats = {k: v / max(1, n_mb) for k, v in stats_acc.items()}
+    stats: dict[str, float | bool] = {k: v / max(1, n_mb) for k, v in stats_acc.items()}
     stats["early_stop"] = early_stop
     return stats
 
 
-def explained_variance(values, returns):
+def explained_variance(values: np.ndarray, returns: np.ndarray) -> float:
     """1 - Var(returns - values)/Var(returns): is the value head learning?"""
     values = np.asarray(values, dtype=np.float64)
     returns = np.asarray(returns, dtype=np.float64)

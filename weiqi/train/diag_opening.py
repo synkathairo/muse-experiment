@@ -11,7 +11,11 @@ Modes (run from weiqi/train):
   python diag_opening.py --checkpoint runs/smoke/latest.pt   # any local .pt
   python diag_opening.py --blob-tag 6M                # single demo blob
 """
+from __future__ import annotations
+
 import argparse
+from typing import Any
+
 import numpy as np
 import torch
 
@@ -19,10 +23,10 @@ from gotrain.net import GoNet
 from gotrain.export import read_export
 from gotrain import features as F
 
-WEIGHTS = "../../web/site/demos/go/weights/selfplay-clean-%s.bin"
+WEIGHTS: str = "../../web/site/demos/go/weights/selfplay-clean-%s.bin"
 
 
-def load_blob(tag):
+def load_blob(tag: str) -> GoNet:
     sd = read_export(WEIGHTS % tag)
     m = GoNet()
     m.load_state_dict({k: torch.from_numpy(v) for k, v in sd.items()})
@@ -30,7 +34,7 @@ def load_blob(tag):
     return m
 
 
-def load_ckpt(path):
+def load_ckpt(path: str) -> tuple[GoNet, Any]:
     ck = torch.load(path, map_location="cpu", weights_only=False)
     sd = ck["model"] if isinstance(ck, dict) and "model" in ck else ck
     m = GoNet()
@@ -40,23 +44,23 @@ def load_ckpt(path):
     return m, step
 
 
-def infer(m, planes):
+def infer(m: GoNet, planes: np.ndarray) -> tuple[np.ndarray, float]:
     with torch.no_grad():
         logits, value = m(torch.from_numpy(planes[None]).float())
     p = torch.softmax(logits[0], -1).numpy()
     return p, float(value[0])
 
 
-def show_board_top(p, k=10):
+def show_board_top(p: np.ndarray, k: int = 10) -> list[str]:
     idx = np.argsort(-p[:81])[:k]
-    out = []
+    out: list[str] = []
     for i in idx:
         r, c = i // 9, i % 9
         out.append(f"({r},{c}) {p[i]:.3f}")
     return out
 
 
-def empty_planes(black_to_move=True):
+def empty_planes(black_to_move: bool = True) -> np.ndarray:
     return F.encode(np.zeros((9, 9), bool), np.zeros((9, 9), bool),
                     black_to_move=black_to_move)
 
@@ -66,7 +70,7 @@ ap.add_argument("--checkpoint", help=".pt file, e.g. runs/smoke/latest.pt")
 ap.add_argument("--blob-tag", help="single demo blob tag, e.g. 6M")
 args = ap.parse_args()
 
-models = {}
+models: dict[str, GoNet] = {}
 if args.checkpoint:
     m, step = load_ckpt(args.checkpoint)
     models["ckpt"] = m
@@ -89,7 +93,7 @@ for tag, m in models.items():
 print(f"\n=== 2. {target} opening diversity: Black's first move over 40 temp-0.5 samples ===")
 m = models[target]
 rng = np.random.default_rng(0)
-firsts = []
+firsts: list[int] = []
 for _ in range(40):
     p, _ = infer(m, empty_planes(True))
     legal = np.arange(81)
@@ -103,8 +107,8 @@ print("distinct first moves:", len(c), "->", c.most_common(8))
 print(f"\n=== 3. Value trace: {target} greedy self-play, 12 plies (Black's perspective) ===")
 from gotrain.rules import Board, BLACK, WHITE
 b = Board()
-moves = []
-vals = []
+moves: list[str] = []
+vals: list[float] = []
 for ply in range(12):
     color = BLACK if ply % 2 == 0 else WHITE
     own = np.array([[b.grid[r][c] == color for c in range(9)] for r in range(9)])

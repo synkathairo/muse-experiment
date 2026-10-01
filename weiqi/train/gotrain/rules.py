@@ -16,29 +16,38 @@ legality semantics are unchanged (pinned by tests/test_rules_fuzz.py's
 differential fuzz against the naive reference).
 """
 
+from __future__ import annotations
+
 import itertools
+from typing import TYPE_CHECKING
 
-EMPTY, BLACK, WHITE = 0, 1, 2
+if TYPE_CHECKING:
+    import numpy as np
+
+EMPTY: int = 0
+BLACK: int = 1
+WHITE: int = 2
 
 
-def opponent(color):
+def opponent(color: int) -> int:
     return WHITE if color == BLACK else BLACK
 
 
 # -- precomputed per-size tables (module-level cache) --------------------------
 # _NB[size][p] = tuple of int-encoded neighbor points of p = r*size+c.
 # _RC[size][p] = (r, c) for int-encoded p.
-_NB = {}
-_RC = {}
+_NB: dict[int, tuple[tuple[int, ...], ...]] = {}
+_RC: dict[int, tuple[tuple[int, int], ...]] = {}
 
 
-def _tables(size):
+def _tables(size: int) -> tuple[tuple[tuple[int, ...], ...], tuple[tuple[int, int], ...]]:
     if size not in _NB:
-        nb, rc = [], []
+        nb: list[tuple[int, ...]] = []
+        rc: list[tuple[int, int]] = []
         for r in range(size):
             for c in range(size):
                 rc.append((r, c))
-                nbs = []
+                nbs: list[int] = []
                 if r > 0:
                     nbs.append((r - 1) * size + c)
                 if r < size - 1:
@@ -54,22 +63,24 @@ def _tables(size):
 
 
 class Board:
-    def __init__(self, size=9):
-        self.size = size
-        self.grid = [[EMPTY] * size for _ in range(size)]
-        self.to_play = BLACK
-        self.ko = None          # (r, c) or None: simple-ko-banned point
-        self.last_move = None   # (r, c) or None (None also means pass / no move yet)
+    def __init__(self, size: int = 9) -> None:
+        self.size: int = size
+        self.grid: list[list[int]] = [[EMPTY] * size for _ in range(size)]
+        self.to_play: int = BLACK
+        self.ko: tuple[int, int] | None = None  # (r, c) or None: simple-ko-banned point
+        self.last_move: tuple[int, int] | None = None  # (r, c) or None (None also means pass / no move yet)
+        self._nb: tuple[tuple[int, ...], ...]
+        self._rc: tuple[tuple[int, int], ...]
         self._nb, self._rc = _tables(size)
-        self.history = {self._tuple()}  # board hashes seen (positional superko)
+        self.history: set[bytes] = {self._tuple()}  # board hashes seen (positional superko)
 
-    def _tuple(self):
+    def _tuple(self) -> bytes:
         # bytes, not tuple-of-ints: built at C speed by itertools.chain, and
         # hashing 81 bytes is far cheaper than hashing 81 Python ints.
         return bytes(itertools.chain.from_iterable(self.grid))
 
     # -- group / liberty helpers -------------------------------------------------
-    def _group_int(self, p0):
+    def _group_int(self, p0: int) -> tuple[list[int], set[int]]:
         """Flood fill from int-encoded point p0.
 
         Returns (stones, liberties): stones as a list of int points, liberties
@@ -84,9 +95,9 @@ class Board:
         n = self.size * self.size
         seen = bytearray(n)
         seen[p0] = 1
-        stones = [p0]
-        libs = set()
-        stack = [p0]
+        stones: list[int] = [p0]
+        libs: set[int] = set()
+        stack: list[int] = [p0]
         while stack:
             p = stack.pop()
             for q in nb[p]:
@@ -101,7 +112,7 @@ class Board:
         return stones, libs
 
     # -- legality / play ----------------------------------------------------------
-    def _would_capture(self, p, color):
+    def _would_capture(self, p: int, color: int) -> list[int]:
         """Int-encoded points captured by playing p for color.
 
         Returns a list of int points (deduplicated: each captured group is
@@ -113,8 +124,8 @@ class Board:
         opp = opponent(color)
         grid = self.grid
         rc = self._rc
-        captured = []
-        seen_groups = set()
+        captured: list[int] = []
+        seen_groups: set[int] = set()
         for q in self._nb[p]:
             qr, qc = rc[q]
             if grid[qr][qc] == opp and q not in seen_groups:
@@ -125,7 +136,7 @@ class Board:
                     captured.extend(stones)
         return captured
 
-    def is_legal(self, r, c, color):
+    def is_legal(self, r: int, c: int, color: int) -> bool:
         if self.grid[r][c] != EMPTY:
             return False
         if self.ko is not None and (r, c) == self.ko:
@@ -163,7 +174,7 @@ class Board:
         # one. (Passes are exempt — they create no new board — and stay legal.)
         return board_t not in self.history
 
-    def is_eye_fill(self, r, c, color):
+    def is_eye_fill(self, r: int, c: int, color: int) -> bool:
         """True if `color` playing at (r, c) fills its own eye: the point is
         empty and every orthogonal neighbor is `color` (or off the board).
         Such moves are legal but strictly dominated — no capture is possible
@@ -184,7 +195,7 @@ class Board:
             return False
         return True
 
-    def play(self, move, color):
+    def play(self, move: tuple[int, int] | None, color: int) -> bool:
         """Apply a move. move = (r, c) or None for pass. Returns True if legal."""
         if move is None:
             self.history.add(self._tuple())  # board unchanged; harmless dup
@@ -215,7 +226,7 @@ class Board:
         self.to_play = opponent(color)
         return True
 
-    def stones(self, color):
+    def stones(self, color: int) -> np.ndarray:
         """(9,9) bool array of `color`'s stones. Row 0 = top, col 0 = left."""
         import numpy as np
 
@@ -226,7 +237,7 @@ class Board:
                     arr[r, c] = True
         return arr
 
-    def liberty_map(self):
+    def liberty_map(self) -> np.ndarray:
         """(size,size) int array: group liberty count per stone point, 0 on empty.
 
         Each connected group is flood-filled exactly once (visited set), so

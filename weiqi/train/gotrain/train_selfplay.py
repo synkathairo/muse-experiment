@@ -24,53 +24,59 @@ Full runs (--device defaults to auto: cuda > mps > cpu; pass it explicitly
 only to override, e.g. --device cpu when debugging a backend quirk):
 
   # Free Colab GPU (T4) — ~100-200M steps ≈ 4-8 h:
-  python -m gotrain.train_selfplay --out runs/auto_v1 --num-envs 64 \\
+  python -m gotrain.train_selfplay --out runs/auto_v1 --num-envs 64 \\\\
       --total-steps 200000000 --rollout-steps 256
 
   # Apple Silicon (PyTorch MPS — no MLX port needed):
-  python -m gotrain.train_selfplay --out runs/auto_v1 --num-envs 64 \\
+  python -m gotrain.train_selfplay --out runs/auto_v1 --num-envs 64 \\\\
       --total-steps 200000000 --rollout-steps 256
 
   # CPU pilot (this box, 2 vCPUs) — plumbing validation only, a few M steps:
-  python -m gotrain.train_selfplay --out runs/auto_pilot --num-envs 32 \\
-      --total-steps 2000000 --rollout-steps 128 --device cpu \\
+  python -m gotrain.train_selfplay --out runs/auto_pilot --num-envs 32 \\\\
+      --total-steps 2000000 --rollout-steps 128 --device cpu \\\\
       --opp-refresh-every 10 --eval-every 20 --ckpt-every 10
 """
+
+from __future__ import annotations
 
 import argparse
 import json
 import os
 import sys
 import time
+from typing import Any, cast
 
 import numpy as np
 import torch
 import torch.nn.functional as F
 
 from .export import export_weights, export_weights_tactical
-from .net import N_POINTS
+from .net import N_POINTS, GoNetTactical
 from .net_aux import (GoNetAux, load_trunk_from_gonet, check_trunk_resume)
 from .ppo import PPOConfig, compute_gae, ppo_update, explained_variance
 from .selfplay import (SelfPlayGo, PASS, set_komi, ownership_labels,
-                       margin_label, to_learner_perspective, PositionArchive)
+                       margin_label, to_learner_perspective, PositionArchive,
+                       OpponentFn)
 
 # Frozen museum snapshots, log-spaced in env steps (cf. train_cloning.SNAP_STEPS,
 # which is in gradient steps — here the natural unit is env steps / PPO samples).
-SNAP_STEPS = [1000, 3000, 10000, 30000, 100000, 300000, 1000000,
+SNAP_STEPS: list[int] = [1000, 3000, 10000, 30000, 100000, 300000, 1000000,
               3000000, 10000000, 30000000, 100000000, 300000000]
 
 
 # ---------------------------------------------------------------------------
 # masked action sampling
 # ---------------------------------------------------------------------------
-def masked_dist(logits, masks):
+def masked_dist(logits: torch.Tensor, masks: torch.Tensor) -> torch.distributions.Categorical:
     """Categorical over legal moves only (illegal logits -> -inf -> 0 mass)."""
     return torch.distributions.Categorical(
         logits=logits.masked_fill(~masks, float("-inf")))
 
 
 @torch.no_grad()
-def dirichlet_noised_dist(dist, masks, noise_mask, alpha, eps):
+def dirichlet_noised_dist(dist: torch.distributions.Categorical,
+                          masks: torch.Tensor, noise_mask: torch.Tensor,
+                          alpha: float, eps: float) -> torch.distributions.Categorical:
     """AlphaZero-style opening exploration: P' = (1-eps)*P + eps*Dir(alpha).
 
     The noise is supported on legal moves only and is mixed in per-row for
@@ -79,7 +85,10 @@ def dirichlet_noised_dist(dist, masks, noise_mask, alpha, eps):
     scaling would be a no-op, because the noise injects mass independently
     of the policy's output.
     """
-    probs = dist.probs
+    # Categorical.probs is a @lazy_property in torch: ty models instance
+    # access as Tensor | lazy_property[...], but at runtime it always
+    # materializes to a Tensor, so the cast is exact.
+    probs = cast("torch.Tensor", dist.probs)
     d = torch.distributions.Dirichlet(
         torch.full((probs.shape[-1],), alpha, device=probs.device)).sample((probs.shape[0],))
     d = d.masked_fill(~masks, 0.0)
@@ -93,7 +102,7 @@ def dirichlet_noised_dist(dist, masks, noise_mask, alpha, eps):
 
 # Precomputed dihedral group permutations for 9x9. _PERMS[s, old_idx] = new_idx.
 # sym_idx = k*2 + flip (k=0..3 rotations, flip=0/1). Computed once at import.
-def _build_dihedral_perms():
+def _build_dihedral_perms() -> tuple[torch.Tensor, torch.Tensor]:
     rr, cc = torch.meshgrid(torch.arange(9), torch.arange(9), indexing='ij')
     perms = []
     for k in range(4):
@@ -107,10 +116,13 @@ def _build_dihedral_perms():
     p = torch.stack(perms)  # (8, 81)
     return p, torch.argsort(p, dim=1)  # (perms, inverse perms)
 
+
+_DIHEDRAL_PERMS: torch.Tensor
+_DIHEDRAL_INV_PERMS: torch.Tensor
 _DIHEDRAL_PERMS, _DIHEDRAL_INV_PERMS = _build_dihedral_perms()
 
 
-def _symmetry_transforms(batch_size, device):
+def _symmetry_transforms(batch_size: int, device: torch.device) -> torch.Tensor:
     """Sample a random dihedral symmetry per env. Returns sym_idx (B,) in 0..7."""
     k = torch.randint(0, 4, (batch_size,), device=device)
     flip = torch.randint(0, 2, (batch_size,), device=device)
@@ -118,7 +130,9 @@ def _symmetry_transforms(batch_size, device):
 
 
 @torch.no_grad()
-def _apply_symmetry(obs, masks, sym_idx):
+def _apply_symmetry(obs: torch.Tensor, masks: torch.Tensor,
+                    sym_idx: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor,
+                                                    torch.Tensor, torch.Tensor]:
     """Apply per-sample dihedral symmetry. Returns (obs_aug, masks_aug, perm, inv_perm).
     obs: (B, C, 9, 9), masks: (B, 82). perm[b, old]=new, inv_perm[b, new]=old.
     """
@@ -145,8 +159,11 @@ def _apply_symmetry(obs, masks, sym_idx):
 
 
 @torch.no_grad()
-def sample_actions(policy, obs_t, masks_t, noise_mask=None,
-                   dirichlet_alpha=0.05, dirichlet_eps=0.25):
+def sample_actions(policy: torch.nn.Module, obs_t: torch.Tensor,
+                   masks_t: torch.Tensor, noise_mask: torch.Tensor | None = None,
+                   dirichlet_alpha: float = 0.05,
+                   dirichlet_eps: float = 0.25) -> tuple[torch.Tensor, torch.Tensor,
+                                                        torch.Tensor]:
     logits, values = policy(obs_t)
     dist = masked_dist(logits, masks_t)
     if noise_mask is not None and bool(noise_mask.any()):
@@ -159,15 +176,17 @@ def sample_actions(policy, obs_t, masks_t, noise_mask=None,
 
 
 @torch.no_grad()
-def greedy_actions(policy, obs_t, masks_t):
+def greedy_actions(policy: torch.nn.Module, obs_t: torch.Tensor,
+                   masks_t: torch.Tensor) -> torch.Tensor:
     """Argmax over legal moves (for eval)."""
     logits, _ = policy(obs_t)
     masked = logits.masked_fill(~masks_t, float("-inf"))
     return masked.argmax(dim=-1)
 
 
-def aux_update(policy, optimizer, cfg, obs, own_tgt, margin_tgt,
-               own_w, margin_w, epochs):
+def aux_update(policy: GoNetAux, optimizer: torch.optim.Optimizer, cfg: PPOConfig,
+               obs: torch.Tensor, own_tgt: torch.Tensor, margin_tgt: torch.Tensor,
+               own_w: float, margin_w: float, epochs: int) -> dict[str, float]:
     """Supervised auxiliary update on finished-game labels (KataGo-style).
 
     obs: (B,6,9,9); own_tgt: (B,81) in {-1,0,1} from the side-to-move's
@@ -200,8 +219,9 @@ def aux_update(policy, optimizer, cfg, obs, own_tgt, margin_tgt,
             "aux_margin": acc_margin / max(1, n)}
 
 
-def bc_update(policy, optimizer, cfg, demo_x, demo_y, coef, epochs,
-             batch_size):
+def bc_update(policy: torch.nn.Module, optimizer: torch.optim.Optimizer,
+              cfg: PPOConfig, demo_x: torch.Tensor, demo_y: torch.Tensor,
+              coef: float, epochs: int, batch_size: int) -> dict[str, float]:
     """Behavioral-cloning update on human demonstration positions.
 
     demo_x: (N,6,9,9) float positions; demo_y: (N,) long move indices.
@@ -234,7 +254,8 @@ def bc_update(policy, optimizer, cfg, demo_x, demo_y, coef, epochs,
     return {"bc_loss": acc / max(1, n)}
 
 
-def random_opponent(obs, masks, game_plies=None):
+def random_opponent(obs: np.ndarray, masks: np.ndarray,
+                    game_plies: np.ndarray | None = None) -> np.ndarray:
     """Uniform over legal moves. obs unused; signature matches opponent_fn."""
     B = masks.shape[0]
     actions = np.empty(B, dtype=np.int64)
@@ -244,8 +265,9 @@ def random_opponent(obs, masks, game_plies=None):
     return actions
 
 
-def attach_finished_game_labels(env, i, ep_step_idxs, b_own, b_margin,
-                                 b_aux_valid):
+def attach_finished_game_labels(env: SelfPlayGo, i: int, ep_step_idxs: list[int],
+                                b_own: torch.Tensor, b_margin: torch.Tensor,
+                                b_aux_valid: torch.Tensor) -> None:
     """Compute ownership/margin labels for env i's finished game and attach
     them to the game's rollout steps.
 
@@ -264,7 +286,8 @@ def attach_finished_game_labels(env, i, ep_step_idxs, b_own, b_margin,
     b_aux_valid[idx, i] = True
 
 
-def _captures_if(own, opp, r, c):
+def _captures_if(own: np.ndarray, opp: np.ndarray, r: int | np.integer[Any],
+                 c: int | np.integer[Any]) -> int:
     """Stones captured by playing (r, c): adjacent opponent groups whose only
     liberty is (r, c). `own`/`opp` are (9,9) bool arrays from the side to move's
     perspective. Only called on legal moves (suicide/ko already masked out)."""
@@ -293,7 +316,8 @@ def _captures_if(own, opp, r, c):
     return caps
 
 
-def greedy_capture_opponent(obs, masks, game_plies=None):
+def greedy_capture_opponent(obs: np.ndarray, masks: np.ndarray,
+                            game_plies: np.ndarray | None = None) -> np.ndarray:
     """1-ply greedy tactical bot: maximizes immediate stones captured (random
     tie-break, pass loses ties); with nothing to capture, plays a random
     non-pass move. First rung above random on the eval ladder."""
@@ -314,9 +338,10 @@ def greedy_capture_opponent(obs, masks, game_plies=None):
     return actions
 
 
-def make_snapshot_opponent(snapshot_net, device, greedy=False,
-                           dirichlet_plies=0, dirichlet_alpha=0.05,
-                           dirichlet_eps=0.25):
+def make_snapshot_opponent(snapshot_net: torch.nn.Module, device: torch.device,
+                           greedy: bool = False, dirichlet_plies: int = 0,
+                           dirichlet_alpha: float = 0.05,
+                           dirichlet_eps: float = 0.25) -> OpponentFn:
     """opponent_fn playing the frozen snapshot (sampled, or greedy for eval).
 
     When not greedy, Dirichlet noise is mixed into the first `dirichlet_plies`
@@ -326,13 +351,14 @@ def make_snapshot_opponent(snapshot_net, device, greedy=False,
     snapshot_net.eval()
 
     @torch.no_grad()
-    def fn(obs, masks, game_plies=None):
+    def fn(obs: np.ndarray, masks: np.ndarray,
+           game_plies: np.ndarray | None = None) -> np.ndarray:
         obs_t = torch.from_numpy(obs).to(device)
         masks_t = torch.from_numpy(masks).to(device)
         if greedy:
             a = greedy_actions(snapshot_net, obs_t, masks_t)
         else:
-            noise_mask = None
+            noise_mask: torch.Tensor | None = None
             if game_plies is not None and dirichlet_plies > 0:
                 noise_mask = torch.from_numpy(
                     np.asarray(game_plies) < dirichlet_plies).to(device)
@@ -348,7 +374,8 @@ def make_snapshot_opponent(snapshot_net, device, greedy=False,
 # ---------------------------------------------------------------------------
 # evaluation: learner (greedy) vs an opponent_fn, alternating colors
 # ---------------------------------------------------------------------------
-def _tally_finished(done_idxs, rewards, wins, played, n_games):
+def _tally_finished(done_idxs: np.ndarray, rewards: np.ndarray, wins: int,
+                    played: int, n_games: int) -> tuple[int, int, np.ndarray]:
     """Fold newly finished games into (wins, played), capping at n_games.
 
     Several envs can finish on the same step; without the cap, `played` can
@@ -366,8 +393,9 @@ def _tally_finished(done_idxs, rewards, wins, played, n_games):
 
 
 @torch.no_grad()
-def evaluate(policy, opponent_fn, n_games, device, seed=12345, max_plies=None,
-             tactical=False):
+def evaluate(policy: torch.nn.Module, opponent_fn: OpponentFn, n_games: int,
+             device: torch.device, seed: int = 12345,
+             max_plies: int | None = None, tactical: bool = False) -> float:
     """Win rate of the greedy learner vs opponent_fn (learner alternates color)."""
     env = SelfPlayGo(num_envs=n_games, seed=seed,
                      max_plies=max_plies or 3 * 9 * 9, opponent_fn=opponent_fn,
@@ -398,7 +426,9 @@ def evaluate(policy, opponent_fn, n_games, device, seed=12345, max_plies=None,
 # ---------------------------------------------------------------------------
 # checkpointing
 # ---------------------------------------------------------------------------
-def save_ckpt(path, policy, optimizer, snapshot, step, ppo_iter, snap_ptr, hparams):
+def save_ckpt(path: str, policy: torch.nn.Module, optimizer: torch.optim.Optimizer,
+              snapshot: torch.nn.Module, step: int, ppo_iter: int, snap_ptr: int,
+              hparams: dict[str, Any]) -> None:
     torch.save({
         "step": step,               # env steps (learner moves) so far
         "ppo_iter": ppo_iter,
@@ -412,7 +442,7 @@ def save_ckpt(path, policy, optimizer, snapshot, step, ppo_iter, snap_ptr, hpara
     }, path)
 
 
-def _load_model_flexible(model, sd):
+def _load_model_flexible(model: torch.nn.Module, sd: dict[str, Any]) -> bool:
     """Load a checkpoint model dict into a GoNetAux.
 
     Accepts plain GoNet dicts (e.g. the 15.5M run) via trunk mapping — aux
@@ -424,7 +454,10 @@ def _load_model_flexible(model, sd):
     sd_is_plain = ("conv1.weight" in sd
                    and not any(k.startswith("trunk.") for k in sd))
     if is_aux_target and sd_is_plain:
-        res = load_trunk_from_gonet(model, sd)
+        # is_aux_target means the model's state dict carries trunk.* keys,
+        # which in this codebase is exactly GoNetAux (GoNetTactical and
+        # plain GoNet store their conv weights unprefixed).
+        res = load_trunk_from_gonet(cast("GoNetAux", model), sd)
         check_trunk_resume(res.missing_keys)
         if res.unexpected_keys:
             raise RuntimeError(
@@ -434,7 +467,9 @@ def _load_model_flexible(model, sd):
     return False
 
 
-def _migrate_optimizer_state_dict(ck_opt_sd, ck_model_sd, policy):
+def _migrate_optimizer_state_dict(ck_opt_sd: dict[str, Any],
+                                  ck_model_sd: dict[str, Any],
+                                  policy: torch.nn.Module) -> dict[str, Any]:
     """Rebuild an optimizer state dict saved over a plain GoNet so it loads
     into an optimizer over GoNetAux parameters.
 
@@ -476,7 +511,8 @@ def _migrate_optimizer_state_dict(ck_opt_sd, ck_model_sd, policy):
     return {"state": new_state, "param_groups": [new_group]}
 
 
-def load_ckpt(path, policy, optimizer, snapshot, device):
+def load_ckpt(path: str, policy: torch.nn.Module, optimizer: torch.optim.Optimizer,
+              snapshot: torch.nn.Module, device: torch.device) -> dict[str, Any]:
     ck = torch.load(path, map_location=device, weights_only=False)
     trunk_mapped = _load_model_flexible(policy, ck["model"])
     _load_model_flexible(snapshot, ck["opponent"])
@@ -498,7 +534,7 @@ def load_ckpt(path, policy, optimizer, snapshot, device):
     return ck
 
 
-def explicit_cli_flags(argv=None):
+def explicit_cli_flags(argv: list[str] | None = None) -> set[str]:
     """--flag names (underscore form) explicitly present on the command line."""
     out = set()
     for tok in (sys.argv[1:] if argv is None else argv):
@@ -507,7 +543,8 @@ def explicit_cli_flags(argv=None):
     return out
 
 
-def apply_resumed_hparams(args, ck, explicit=None):
+def apply_resumed_hparams(args: argparse.Namespace, ck: dict[str, Any],
+                          explicit: set[str] | None = None) -> dict[str, Any]:
     """Restore a resumed run's hyperparameters from its checkpoint.
 
     --out and --device always stay as given on the CLI (run directory and
@@ -532,7 +569,7 @@ def apply_resumed_hparams(args, ck, explicit=None):
 # ---------------------------------------------------------------------------
 # main
 # ---------------------------------------------------------------------------
-def resolve_device(name):
+def resolve_device(name: str) -> torch.device:
     """Map a --device name to torch.device.
 
     'auto' picks cuda when available, else mps, else cpu. Explicit names are
@@ -554,7 +591,7 @@ def resolve_device(name):
     return torch.device(name)
 
 
-def main():
+def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("--out", required=True, help="run dir (checkpoints + train.log)")
     ap.add_argument("--num-envs", type=int, default=32)
@@ -682,7 +719,7 @@ def main():
         snapshot = GoNetAux().to(device)   # frozen opponent; refreshed every K iters
     snapshot.load_state_dict(policy.state_dict())
     optimizer = torch.optim.Adam(policy.parameters(), lr=args.lr)
-    hparams = {k: v for k, v in vars(args).items() if k != "resume"}
+    hparams: dict[str, Any] = {k: v for k, v in vars(args).items() if k != "resume"}
 
     step = 0          # env steps (learner moves) completed
     ppo_iter = 0
@@ -713,7 +750,7 @@ def main():
 
     logf = open(os.path.join(args.out, "train.log"), "a")
 
-    def log(msg):
+    def log(msg: str) -> None:
         line = f"[{time.strftime('%Y-%m-%d %H:%M:%S')}] {msg}"
         print(line, flush=True)
         logf.write(line + "\n")
@@ -724,8 +761,10 @@ def main():
         log(f"device={device} params={policy.param_count()} "
             f"(GoNetTactical, experimental 13-plane input)")
     else:
+        # This branch constructs GoNetAux, so the cast is exact (and replaces
+        # the type-ignore comment the union used to need here).
         log(f"device={device} params={policy.param_count()} "
-            f"(trunk {policy.trunk.param_count()}, locked GoNet spec)")  # type: ignore
+            f"(trunk {cast('GoNetAux', policy).trunk.param_count()}, locked GoNet spec)")
     log(f"ownership_aux={args.ownership} aux_own_w={args.aux_own_w} "
         f"aux_margin_w={args.aux_margin_w} aux_epochs={args.aux_epochs}")
 
@@ -770,7 +809,8 @@ def main():
 
     # ---- behavioral-cloning demo data --------------------------------------
     bc_on = args.bc_data is not None and args.bc_coef > 0
-    demo_x = demo_y = None
+    demo_x: torch.Tensor | None = None
+    demo_y: torch.Tensor | None = None
     if bc_on:
         dx = np.load(os.path.join(args.bc_data, "train_x.npy"))
         dy = np.load(os.path.join(args.bc_data, "train_y.npy"))
@@ -794,9 +834,12 @@ def main():
         b_margin = torch.zeros(T, N)
         b_aux_valid = torch.zeros(T, N, dtype=torch.bool)
         # rollout-step indices belonging to each env's current episode
-        ep_steps = [[] for _ in range(N)]
-        ep_rews, ep_lens = [], []
-        last_obs, last_terms = None, None
+        ep_steps: list[list[int]] = [[] for _ in range(N)]
+        ep_rews: list[float] = []
+        ep_lens: list[int] = []
+        last_obs: np.ndarray | None = None
+        last_terms: np.ndarray | None = None
+        last_truncs: np.ndarray | None = None
 
         for t in range(T):
             for i in range(N):
@@ -807,7 +850,7 @@ def main():
             # Dirichlet opening noise for both colors' early plies: env.plies
             # is the upcoming move's ply index in each env (exact across
             # resets and color alternation, since the env owns the counters).
-            noise_mask = None
+            noise_mask: torch.Tensor | None = None
             if args.dirichlet_plies > 0:
                 noise_mask = torch.from_numpy(
                     env.plies < args.dirichlet_plies).to(device)
@@ -889,19 +932,22 @@ def main():
         # terminals (two passes) and scored max-ply endings -- both are
         # episodic terminals for GAE (see gotrain.ppo.compute_gae).
         with torch.no_grad():
-            next_values = policy(torch.from_numpy(last_obs).to(device))[1].cpu()
-        final_done = torch.from_numpy(last_terms) | torch.from_numpy(last_truncs)
+            next_values = policy(torch.from_numpy(
+                cast("np.ndarray", last_obs)).to(device))[1].cpu()
+        final_done = (torch.from_numpy(cast("np.ndarray", last_terms))
+                      | torch.from_numpy(cast("np.ndarray", last_truncs)))
         next_values = next_values * (~final_done).float()
 
         advantages, returns = compute_gae(
             b_rewards, b_values, b_terms, b_truncs, next_values,
-            torch.from_numpy(last_terms), torch.from_numpy(last_truncs),
+            torch.from_numpy(cast("np.ndarray", last_terms)),
+            torch.from_numpy(cast("np.ndarray", last_truncs)),
             gamma=cfg.gamma, gae_lambda=cfg.gae_lambda)
 
         ev = explained_variance(b_values.numpy(), returns.numpy())
 
         # ---- PPO update ----------------------------------------------------
-        def flat(x):
+        def flat(x: torch.Tensor) -> torch.Tensor:
             return x.reshape(T * N, *x.shape[2:])
         # Clamp at 0: on a resumed run ppo_iter can reach total_iters, and a
         # negative LR is gradient ASCENT -- it destroys the policy in one step.
@@ -921,8 +967,11 @@ def main():
             valid = b_aux_valid.reshape(-1)
             if bool(valid.any()):
                 vdev = valid.to(device)
+                # aux_update needs the aux heads, i.e. GoNetAux; the cast
+                # documents the assumption (--tactical + --ownership would
+                # raise AttributeError on GoNetTactical.forward_aux).
                 aux_stats = aux_update(
-                    policy, optimizer, cfg,
+                    cast("GoNetAux", policy), optimizer, cfg,
                     flat(b_obs).to(device)[vdev],
                     flat(b_own).to(device)[vdev],
                     flat(b_margin).to(device)[vdev],
@@ -936,7 +985,10 @@ def main():
         # signal alive during RL instead of using it only as a warm-start.
         bc_str = ""
         if bc_on:
-            bc_stats = bc_update(policy, optimizer, cfg, demo_x, demo_y,
+            # bc_on implies the tensors were loaded above.
+            bc_stats = bc_update(policy, optimizer, cfg,
+                                 cast("torch.Tensor", demo_x),
+                                 cast("torch.Tensor", demo_y),
                                  args.bc_coef, args.bc_epochs,
                                  args.bc_batch_size)
             bc_str = f" bc={bc_stats['bc_loss']:.4f}"
@@ -990,9 +1042,11 @@ def main():
     # path) never sees the training-only aux heads. Tactical runs export the
     # 13-channel net in the tactical layout (demo path pending phase 2).
     if args.tactical:
-        export_weights_tactical(policy.cpu(), final_bin)
+        # This branch constructs GoNetTactical, so the cast is exact.
+        export_weights_tactical(cast("GoNetTactical", policy).cpu(), final_bin)
     else:
-        export_weights(policy.trunk.cpu(), final_bin)
+        # This branch constructs GoNetAux, so the cast is exact.
+        export_weights(cast("GoNetAux", policy).trunk.cpu(), final_bin)
     log(f"done at step {step}; fp16 export -> {final_bin} "
         f"({os.path.getsize(final_bin)} bytes)")
     logf.close()
