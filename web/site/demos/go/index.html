@@ -170,14 +170,17 @@
 	and 3M steps of PPO fine-tuning on top reaches 118–138 (46.1%). Plain PPO
 	plateaus: 6M steps reaches 129–127 (50.4%), 9M steps 118–138 (46.1%). Interleaving
 	a behavioral-cloning phase on the human positions during PPO breaks the plateau:
-	156–100 (60.9%). Distilling the model's own MCTS-100 search visits back into the
-	policy adds a little more: 160–96 (62.5%) — the default model. Still well below human club strength; the numbers are the measured
+	156–100 (60.9%) — the default model. A follow-up fine-tune distilling the
+	model's own MCTS-100 search visits into the policy (last stop on the timeline)
+	reached 160–96 (62.5%) against GNU Go but lost a 256-game head-to-head against
+	this checkpoint 116–140: the two are statistically tied, so the established
+	champion keeps the default. Still well below human club strength; the numbers are the measured
 	reality, not a strength claim.</p>
 	<p>How the training works is written up in
 	<a href="https://github.com/synkathairo/muse-experiment/blob/main/weiqi/theory.md">weiqi/theory.md</a>
 	— mostly search-free PPO self-play, a different beast from AlphaZero's MCTS. The
 	optional bot search above is MCTS at <em>play</em> time only: the same net,
-	thinking ahead. The final checkpoint did train on search, once: its own
+	thinking ahead. The final timeline checkpoint did train on search, once: its own
 	MCTS-100 visit distributions, distilled into the policy.</p>
 </div>
 
@@ -228,6 +231,12 @@
 
 	function stops() { return manifest.bots[botId].stops; }
 
+	function defaultStop() {
+		const s = stops();
+		const i = s.findIndex(st => st.default);
+		return i >= 0 ? i : (s.length ? s.length - 1 : 0);
+	}
+
 	function refreshTimeline() {
 		const s = stops();
 		const slider = $('stopSlider');
@@ -250,8 +259,7 @@
 
 	async function selectBot(id) {
 		botId = id;
-		const s = stops();
-		stopIdx = s.length ? s.length - 1 : 0;   // default: final model
+		stopIdx = defaultStop();   // default: manifest-flagged stop, else final model
 		refreshTimeline();
 		const n = await loadNet(botId, stopIdx);
 		if (botId !== id) return;   // superseded by a newer selection
