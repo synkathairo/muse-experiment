@@ -1,3 +1,11 @@
+# mypy + numpy are build requirements so `uv sync` / `uv pip install .`
+# compile gotrain/rules.py with mypyc by default (see setup.py): uv installs
+# these into the isolated build env automatically. Opt out of the compiled
+# extension with WEIQI_PURE_PYTHON=1 (pure-Python install, no C compiler needed).
+[build-system]
+requires = ["setuptools", "mypy", "numpy==2.5.2"]
+build-backend = "setuptools.build_meta"
+
 [project]
 name = "weiqi-train"
 version = "0.1.0"
@@ -15,6 +23,9 @@ dependencies = [
 [dependency-groups]
 dev = [
     "pytest>=8",
+    # Needed for manual rebuilds: python setup.py build_ext --inplace
+    # (uv also provides it to the isolated build env via [build-system]).
+    "mypy",
 ]
 
 # PyPI's Linux torch wheels bundle CUDA (~2.5GB) even on CPU-only boxes.

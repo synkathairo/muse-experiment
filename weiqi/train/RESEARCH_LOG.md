@@ -411,3 +411,25 @@ Sol (gpt-6-sol) reviewed the 2x2 results with code inspection (`-C` flag).
 - 100 sims ≈ 85s/move on this 2-CPU box — the demo's MCTS toggle is now worth much more than it was.
 
 **Verdict:** search helps the PPO+BC net a lot (+12pp, significant). The "MCTS doesn't help" verdict is revised: it didn't help the weak peaky policy; it decisively helps the stronger BC-shaped one.
+
+## Tactical-planes kill test verdict (2026-10-01, analyzed post-hoc)
+
+**Question:** do 7 extra liberty/ko planes (13-plane engine; old 6-plane blobs load
+zero-padded, new-channel weights zero-initialized from the 15.5M baseline) help?
+**Design (as run):** 4 runs, plain PPO vs planes branch × 2 seeds (planes_ctrl_s7/s8,
+planes_feat_s7/s8), all EXIT:0 on 2026-09-27; 32-game GNU Go ladder + capture/escape
+blunder set mined from baseline losses.
+
+**Result — ladder: planes wins, both seeds.** Control 11–53 (17.2%), planes 23–41
+(35.9%): **+18.7pp, ~2.4σ pooled** (s7: 15.6→31.2%, s8: 18.8→40.6%). Consistent
+direction in both seeds.
+**Result — blunder set: flat.** Control 0.667 vs planes 0.686 blunder rate (n=612
+positions/arm; ~1σ, wrong direction, noise).
+
+**Verdict:** kill test PASSED — do not shelve. The planes help playing strength
+decisively on the ladder but don't move the mined-blunder metric (either the
+features help non-tactical aspects of play, or the blunder set doesn't
+discriminate). Caveats: 32-game protocol (noisier than the current 256-game
+standard); measured on PPO-from-scratch, not the current warm-start+PPO+BC
+recipe — transfer to the 60.9% model is untested. Natural follow-up: branch the
+warm-start checkpoint with 13 planes and run PPO+BC.

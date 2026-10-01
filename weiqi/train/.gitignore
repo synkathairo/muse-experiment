@@ -5,6 +5,8 @@ exports/
 .venv/
 __pycache__/
 
-# mypyc build output (opt-in via build_rules_ext.py, never committed)
+# mypyc build output (compiled by default via setup.py; opt out with
+# WEIQI_PURE_PYTHON=1). Never committed.
 gotrain/*.so
 build/
+*.egg-info/

@@ -53,6 +53,22 @@ Python ≥3.12) and the exact per-platform artifacts are frozen in `uv.lock`
 bundle on CPU-only boxes; macOS gets the MPS wheel from PyPI), so every
 machine installs the identical environment.
 
+### Compiled rules engine (default)
+
+`uv sync` also compiles `gotrain/rules.py` with mypyc (~1.6× legality scans,
+~1.8× full playouts measured 2026-10-01; ~13s one-time build). All it needs
+on the machine is a C compiler (Xcode CLT on macOS, gcc on Linux) — uv
+provides mypy itself via `[build-system]` in `pyproject.toml`. The `.so`
+shadows `rules.py` transparently; delete `gotrain/rules.*.so` to revert.
+
+- Opt out: `WEIQI_PURE_PYTHON=1 uv sync` (pure-Python install, no compiler needed).
+- No compiler found: sync still succeeds, with a loud warning, as pure Python.
+- After editing `rules.py`, rebuild manually — `uv sync` won't notice source
+  edits: `python setup.py build_ext --inplace`.
+- Sharp edge: the compiled engine's native `int` rejects `numpy.int64` at
+  runtime; the boundary call sites in `gotrain/selfplay.py` already wrap with
+  `int()`. Neither ty nor mypy flags a new violation — only the test suite does.
+
 `--device` defaults to `auto` (cuda > mps > cpu); the resolved device is
 logged at startup. Pass `--device cpu` explicitly only to debug a backend.
 
