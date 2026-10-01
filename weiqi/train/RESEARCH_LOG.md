@@ -412,7 +412,16 @@ Sol (gpt-6-sol) reviewed the 2x2 results with code inspection (`-C` flag).
 
 **Verdict:** search helps the PPO+BC net a lot (+12pp, significant). The "MCTS doesn't help" verdict is revised: it didn't help the weak peaky policy; it decisively helps the stronger BC-shaped one.
 
-## Tactical-planes kill test verdict (2026-10-01, analyzed post-hoc)
+## Tactical-planes kill test verdict (2026-10-01, analyzed post-hoc) — SUPERSEDED
+
+> **CORRECTION (2026-10-01): this entry is wrong and is superseded by the
+> replication verdict above ("VERDICT: Shelve tactical planes").** It re-analyzes
+> the ORIGINAL confounded runs: the seed bug made feat_s7 and feat_s8 the same
+> model (n=1, not two seeds), and the original feat runs used a fresh Adam while
+> controls used warm/migrated Adam. The clean replication (matched seeds, matched
+> warm Adam, fixed RNG) gave ladders control 11–21 vs tactical 9–23 and blunders
+> tactical 64.7% vs control 69.0% — neither beats the 63.9% baseline. Do not act
+> on the "PASSED — do not shelve" verdict below.
 
 **Question:** do 7 extra liberty/ko planes (13-plane engine; old 6-plane blobs load
 zero-padded, new-channel weights zero-initialized from the 15.5M baseline) help?
@@ -433,3 +442,124 @@ discriminate). Caveats: 32-game protocol (noisier than the current 256-game
 standard); measured on PPO-from-scratch, not the current warm-start+PPO+BC
 recipe — transfer to the 60.9% model is untested. Natural follow-up: branch the
 warm-start checkpoint with 13 planes and run PPO+BC.
+
+## Search distillation probe (2026-10-01) — signal present, protocol broken
+
+**Question (Astra's #2 direction):** can the policy absorb its own MCTS's move-selection
+judgments? Teacher = MCTS-100 visit distributions on the PPO+BC 6M net; student = same
+net, fine-tuned with soft-target CE (distill) + retained Go Quest hard BC (coef 0.1).
+
+**Phase 0 (diagnosis, gate: MCTS must differ from greedy on a meaningful minority):**
+200 positions from 20 self-play games. Greedy↔MCTS-50 agreement 83%, greedy↔MCTS-100 87%;
+MCTS-50↔MCTS-100 86%. MCTS disagrees with greedy on 33/200 (16.5%) — gate passed. MCTS
+choice is not reducible to one-ply value selection (one-ply↔MCTS agreement only 28%;
+one-ply move mean policy rank 5.18). Targets generated with 100 sims (MCTS-50 vs MCTS-100
+still disagree 14%, so 50 sims was judged too noisy).
+
+**Phase 1 (targets):** 200 self-play games, 100 sims/position → 21,104 positions
+(`~/workspace/runs/search_distill/targets_s100.npz`; obs/policy/value/mask). Policy rows
+all sum to 1; root values in [−1, 1]. (An earlier 400-game/8-worker run died silently —
+post-mortem: the VM rebooted mid-run, not a code bug.)
+
+**Phase 2 (two arms, 3000 steps each, batch 512, lr 2.5e-4, warm Adam from PPO+BC):**
+- Treatment: distill CE 2.48 → 1.73; BC CE stable ~1.68.
+- Control (distill coef 0, matched): BC CE 1.51 → 1.36; distill CE diagnostic rises (not trained).
+
+**Phase 3 (256-game ladders, temp 0.2, levels 1/3/5/8 × 64, GNU Go):**
+- Treatment: 39–25 / 37–27 / 29–35 / 24–40 = 129–127 raw; 2 games are gnugo illegal-move
+  forfeits counted as "them" → corrected **131–125 (51.2%)**.
+- Control: 25–39 / 31–33 / 26–38 / 27–37 = **109–147 (42.6%)**, no forfeits.
+- Treatment beats control by **+8.6pp, ~2.0σ** (pooled SE ~4.4pp). Gate (≥5pp) passed.
+
+**The catch — the fine-tuning protocol is destructive.** Untouched baseline: 60.9%.
+Treatment degrades it by −9.7pp (~2.2σ); control by −18.3pp (~4.2σ). Restarting the LR at
+2.5e-4 after the PPO+BC run had annealed to ~3e-7 is the prime suspect: 3000 steps of
+high-LR BC-only fine-tuning overfits human move prediction (control BC CE → 1.36) at the
+expense of PPO-learned playing strength. The distillation signal is real relative to the
+matched control (+8.6pp) — the teacher's visits do teach something the BC loss doesn't —
+but neither arm is usable as-is.
+
+**Verdict:** kill the current fine-tuning recipe, not the direction. The signal exists;
+the delivery is broken. Proper follow-up: rerun with a low fine-tune LR (order 1e-5–3e-5,
+not the annealed floor) so the control holds ~60%, then the distill-vs-control delta
+becomes an interpretable gain. Also note the treatment's BC CE stayed high (1.68) while
+learning the teacher — distill and BC compete for capacity at this budget; a longer or
+lower-LR run may separate them. Not run tonight: needs the user's call on the LR and
+another ~5h of compute.
+
+## Search distillation probe — low-LR rerun (2026-10-01): direction confirmed, ~3.9σ
+
+**Follow-up, user-authorized 11:33 UTC** ("Rerun both arms at low LR"): same two arms,
+3000 steps each, batch 512, LR 3e-5, warm Adam from the PPO+BC 6M checkpoint (60.9%);
+distill targets from Phase 1 reused. `runs/search_distill/{treatment_low,control_low}.log`
+both EXIT:0.
+
+**Phase 2 metrics:**
+- Treatment: distill_ce 2.39 → 1.85; bc_ce stable ~1.70–1.74 (final 1.6967).
+- Control (distill coef 0, matched): bc_ce 1.61 → 1.40; distill_ce *diagnostic* 3.09 → 3.36
+  (drifts away from the teacher — not trained, pure drift measure).
+
+**Phase 3 (256-game ladders, temp 0.2, levels 1/3/5/8 × 64, GNU Go):**
+- Treatment: 45–19 / 41–23 / 39–25 / 35–29 = 159 raw + 1 gnugo illegal-move forfeit
+  ("them") → corrected **160–96 (62.5%)**.
+- Control: 25–39 / 34–30 / 29–35 / 28–36 = 114 raw + 2 gnugo-resign forfeits ("them")
+  → corrected **116–140 (45.3%)**.
+- Delta: **+17.2pp, z≈3.9 pooled** — direction confirmed, much stronger than the
+  high-LR run's +8.6pp / 2.0σ.
+
+**Incident:** VM reboot ~12:39 UTC killed the first treatment ladder at 169/256
+(`LADDER_RESTART_NOTE.md`); relaunched 13:25 UTC as a chained job (treatment then
+control), finished 13:48/14:09 UTC. Both fine-tune checkpoints verified intact; partial
+log preserved. Final numbers are from the fresh complete runs.
+
+**Interpretation (refines the high-LR read):** the low-LR control still sits at 45.3% —
+far below the untouched 60.9% — so the LR restart was *not* the whole story of the
+control damage. 3000 steps of BC-only fine-tuning drifts the policy off its PPO optimum
+even at 3e-5: the control imitates humans *better* (BC CE 1.40 vs treatment's 1.70)
+while playing ~17pp worse. The distill loss anchored the policy — distillation didn't
+just add signal, it counteracted BC drift.
+
+**Honest absolute framing:** the treatment does not beat the model it started from —
+62.5% vs untouched 60.9% = +1.6pp (z≈+0.36, noise). The defensible claim is the
+distill-vs-control delta, not an absolute gain. Demo page: keep the shipped 60.9%
+checkpoint; the fine-tuned treatment is not shippable on these numbers.
+
+**Verdict:** the direction is real — distilling the net's own MCTS judgments beats
+matched BC-only fine-tuning by ~17pp. Open next steps: longer distill budget, folding
+distillation into the main PPO+BC line, Astra's value-head probe, architecture screen.
+Probe code uncommitted/unpushed.
+
+## Search distillation probe, low-LR rerun (2026-10-01) — decisive signal
+
+**Follow-up to the high-LR run above.** Both arms retrained identically except
+`--ft-lr 3e-5` (was 2.5e-4). Same 21,104 MCTS-100 targets, 3000 steps, warm Adam,
+seed 0. Checkpoints: `~/workspace/runs/search_distill/{treatment_low,control_low}/finetune.pt`.
+
+**Training:**
+- Treatment (distill+BC): distill CE 2.48 → 1.85; BC CE flat ~1.70 (no BC overfit).
+- Control (BC-only): BC CE 1.51 → 1.40; distill CE diagnostic 3.36 (not trained).
+
+**Ladders (256 games, temp 0.2, levels 1/3/5/8 × 64; JSON primary records checked):**
+- Treatment: L1 44–19, L3 41–23, L5 39–25, L8 35–29 = 159–96 raw; 1 gnugo
+  illegal-move forfeit miscounted → corrected **160–96 (62.5%)**.
+- Control: L1 30–34, L3 35–29, L5 23–41, L8 27–37 = **115–141 (44.9%)**, no forfeits.
+
+**Result: treatment beats control by +17.6pp, ~4.1σ** (pooled SE ~4.3pp). The
+distillation signal is strong and significant — not a borderline read.
+
+**Revised interpretation of the high-LR run:** the control collapses to ~44–45% at
+BOTH learning rates, so the damage is not (only) the LR restart. BC-only fine-tuning
+without PPO drags the policy back toward pure human imitation (cf. pure supervised =
+28.9%): the PPO component was load-bearing for the 60.9%, and 3000 steps of BC-only
+erode it. The treatment is anchored by the teacher — MCTS visits derived from the
+strong 60.9% policy itself — so it suffers none of the collapse and lands at 62.5%,
+marginally above the untouched baseline (+1.6pp, ~0.4σ, n.s. on its own).
+
+**Verdict:** search distillation works on this net. The +17.6pp vs the matched control
+is the causal contrast that matters; the resulting 62.5% greedy model is the strongest
+measured greedy checkpoint (baseline 60.9%), though the edge over baseline alone is
+noise. Caveats: single run each arm (n=1); the control is arguably a strawman (BC-only
+fine-tuning is now known-poison, which inflates the gap vs a "do nothing" baseline —
+but the treatment matching/beating the untouched baseline shows the signal isn't just
+damage mitigation). Natural next: longer low-LR distill run, or distill-then-short-PPO.
+Whether 62.5% earns the demo default is the user's call (needs commit + push).

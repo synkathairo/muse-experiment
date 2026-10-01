@@ -38,7 +38,7 @@
    ]
   },
   "supervised": {
-   "about": "Behavioral cloning on 273k human 9x9 positions (Go Quest), then PPO fine-tuning from the imitation checkpoint. Pure imitation scores 74-182 (28.9%) vs GNU Go; 3M PPO steps reach 118-138 (46.1%); plain PPO plateaus at 6M with 129-127 (50.4%) and 9M with 118-138 (46.1%). Interleaving a behavioral-cloning phase on the human positions during PPO (3M to 6M, same budget) breaks the plateau: 156-100 (60.9%).",
+   "about": "Behavioral cloning on 273k human 9x9 positions (Go Quest), then PPO fine-tuning from the imitation checkpoint. Pure imitation scores 74-182 (28.9%) vs GNU Go; 3M PPO steps reach 118-138 (46.1%); plain PPO plateaus at 6M with 129-127 (50.4%) and 9M with 118-138 (46.1%). Interleaving a behavioral-cloning phase on the human positions during PPO (3M to 6M, same budget) breaks the plateau: 156-100 (60.9%). A final fine-tune distilling the model's own MCTS-100 search visits into the policy reaches 160-100 (62.5%) — the default model.",
    "label": "Supervised",
    "stops": [
     {
@@ -60,6 +60,11 @@
      "file": "weights/supervised-ppo-bc-6M.bin",
      "label": "imitation+PPO+BC 6M",
      "steps": 6000000
+    },
+    {
+     "file": "weights/supervised-search-distill-6M.bin",
+     "label": "imitation+PPO+BC+search-distill",
+     "steps": 6003000
     }
    ]
   }

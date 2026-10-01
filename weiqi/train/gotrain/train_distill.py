@@ -29,9 +29,10 @@ import torch
 import torch.nn.functional as F
 
 from .net import GoNet
+from .net_aux import GoNetAux, TRUNK_PREFIX
 from .net_wide import GoNetWide, GoNetPool, GoNetWidePool
 
-NetT = GoNet | GoNetWide | GoNetPool | GoNetWidePool
+NetT = GoNet | GoNetWide | GoNetPool | GoNetWidePool | GoNetAux
 
 ARCHITECTURES: dict[str, type[NetT]] = {
     "baseline": GoNet,
@@ -39,6 +40,19 @@ ARCHITECTURES: dict[str, type[NetT]] = {
     "pool": GoNetPool,
     "widepool": GoNetWidePool,
 }
+
+# Architectures a --init-checkpoint can warm-start from (auto-detected from
+# the state-dict key prefix). Kept separate from ARCHITECTURES so the 2x2
+# diagnostic's default --archs list is unchanged.
+CKPT_ARCHITECTURES: dict[str, type[NetT]] = {
+    "baseline": GoNet,
+    "aux": GoNetAux,
+}
+
+
+def detect_ckpt_arch(state_dict: dict) -> str:
+    return "aux" if any(k.startswith(TRUNK_PREFIX) for k in state_dict) \
+        else "baseline"
 
 
 def load_dataset(path: str) -> dict[str, torch.Tensor | None]:
@@ -155,6 +169,132 @@ def train_one(net: NetT, train_data: dict[str, torch.Tensor | None],
     return net
 
 
+def load_bc_data(bc_dir: str) -> tuple[torch.Tensor, torch.Tensor]:
+    """Load Go Quest supervised data (train_x.npy / train_y.npy)."""
+    import os
+    x = torch.from_numpy(np.load(os.path.join(bc_dir, "train_x.npy")))
+    y = torch.from_numpy(np.load(os.path.join(bc_dir, "train_y.npy"))).long()
+    return x, y
+
+
+def finetune(args: argparse.Namespace, device: torch.device | str) -> None:
+    """Search-distillation probe, Phase 2.
+
+    Warm-starts from --init-checkpoint (model + optimizer state, arch
+    auto-detected) and fine-tunes on MCTS visit-distribution targets
+    (--data), optionally retaining the human BC stream (--bc-data,
+    --bc-coef) and distilling the search root value (--value-coef).
+
+    The control arm is distill_coef=0: same steps, same BC exposure.
+    """
+    import os
+    ck = torch.load(args.init_checkpoint, map_location=device,
+                    weights_only=False)
+    sd = ck["model"] if isinstance(ck, dict) and "model" in ck else ck
+    arch_name = detect_ckpt_arch(sd)
+    net = CKPT_ARCHITECTURES[arch_name]().to(device)
+    net.load_state_dict(sd)
+    print(f"warm-start: arch={arch_name} "
+          f"params={net.param_count():,} from {args.init_checkpoint}")
+
+    opt = torch.optim.Adam(net.parameters(), lr=1e-3)
+    if isinstance(ck, dict) and "optimizer" in ck:
+        opt.load_state_dict(ck["optimizer"])
+        print("loaded optimizer state (warm Adam)")
+    if args.ft_lr is not None:
+        for g in opt.param_groups:
+            g["lr"] = args.ft_lr
+        print(f"lr overridden to {args.ft_lr}")
+    else:
+        print(f"lr={opt.param_groups[0]['lr']} (from checkpoint)")
+
+    data = load_dataset(args.data)
+    d_obs = data["obs"]
+    d_pol = data["policy"]
+    d_val = data["value"]
+    assert d_obs is not None and d_pol is not None
+    n_d = len(d_obs)
+    has_value = d_val is not None and args.value_coef > 0
+    print(f"distill positions: {n_d} (value targets: {has_value})")
+
+    bc_x = bc_y = None
+    n_b = 0
+    if args.bc_coef > 0:
+        if not args.bc_data:
+            raise SystemExit("--bc-data is required when --bc-coef > 0")
+        bc_x, bc_y = load_bc_data(args.bc_data)
+        n_b = len(bc_x)
+        print(f"BC positions: {n_b} coef={args.bc_coef}")
+
+    net.train()
+    rng = torch.Generator().manual_seed(args.seed)
+    bs = args.batch_size
+    run = {"dce": 0.0, "bce": 0.0, "vmse": 0.0, "n": 0}
+    t0 = time.time()
+    for step in range(1, args.steps + 1):
+        d_idx = torch.randint(0, n_d, (bs,), generator=rng)
+        x = d_obs[d_idx].to(device)
+        p_targ = d_pol[d_idx].to(device)
+        logits, v_pred = net(x)
+        logp = F.log_softmax(logits, dim=1)
+        dce = -(p_targ * logp).sum(dim=1).mean()
+        loss = args.distill_coef * dce
+        bce = torch.zeros((), device=device)
+        if args.bc_coef > 0:
+            assert bc_x is not None and bc_y is not None
+            b_idx = torch.randint(0, n_b, (bs,), generator=rng)
+            bx = bc_x[b_idx].to(device)
+            by = bc_y[b_idx].to(device)
+            blogits, _ = net(bx)
+            bce = F.cross_entropy(blogits, by)
+            loss = loss + args.bc_coef * bce
+        vmse = torch.zeros((), device=device)
+        if has_value:
+            assert d_val is not None
+            v_targ = d_val[d_idx].to(device)
+            vmse = F.mse_loss(v_pred, v_targ)
+            loss = loss + args.value_coef * vmse
+
+        opt.zero_grad()
+        loss.backward()
+        torch.nn.utils.clip_grad_norm_(net.parameters(), 0.5)
+        opt.step()
+
+        run["dce"] += dce.item()
+        run["bce"] += bce.item()
+        run["vmse"] += vmse.item()
+        run["n"] += 1
+        if step % args.log_every == 0:
+            dt = time.time() - t0
+            print(f"  step {step}/{args.steps} "
+                  f"distill_ce={run['dce'] / run['n']:.4f} "
+                  f"bc_ce={run['bce'] / run['n']:.4f} "
+                  f"value_mse={run['vmse'] / run['n']:.4f} "
+                  f"({dt / run['n'] * 1000:.0f}ms/step)", flush=True)
+            run = {"dce": 0.0, "bce": 0.0, "vmse": 0.0, "n": 0}
+            t0 = time.time()
+
+    os.makedirs(args.out, exist_ok=True)
+    ckpt_path = os.path.join(args.out, "finetune.pt")
+    torch.save({
+        "model": net.state_dict(),
+        "optimizer": opt.state_dict(),
+        "steps": args.steps,
+        "args": vars(args),
+    }, ckpt_path)
+    print(f"saved {ckpt_path}")
+    with open(os.path.join(args.out, "finetune.json"), "w") as f:
+        import json
+        json.dump({
+            "arch": arch_name,
+            "steps": args.steps,
+            "distill_coef": args.distill_coef,
+            "bc_coef": args.bc_coef,
+            "value_coef": args.value_coef,
+            "distill_positions": n_d,
+        }, f, indent=1)
+
+
 def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("--data", required=True, help="NPZ with obs/policy/value/mask")
@@ -166,6 +306,24 @@ def main() -> None:
     ap.add_argument("--device", default="auto")
     ap.add_argument("--archs", nargs="+", default=list(ARCHITECTURES),
                     choices=list(ARCHITECTURES))
+    # -- search-distillation fine-tune mode (Phase 2 of the probe) --------
+    ap.add_argument("--init-checkpoint", default=None,
+                    help="warm-start from a training checkpoint (model + "
+                    "optimizer); arch auto-detected")
+    ap.add_argument("--bc-data", default=None,
+                    help="dir with Go Quest train_x.npy/train_y.npy")
+    ap.add_argument("--bc-coef", type=float, default=0.0,
+                    help="human-BC hard-CE coefficient (0.1 mirrors PPO+BC)")
+    ap.add_argument("--distill-coef", type=float, default=1.0,
+                    help="MCTS soft-target CE coefficient (0.0 = control arm)")
+    ap.add_argument("--value-coef", type=float, default=0.0,
+                    help="search root-value MSE coefficient")
+    ap.add_argument("--steps", type=int, default=3000,
+                    help="minibatch steps in fine-tune mode")
+    ap.add_argument("--seed", type=int, default=0)
+    ap.add_argument("--log-every", type=int, default=200)
+    ap.add_argument("--ft-lr", type=float, default=None,
+                    help="override the checkpoint's optimizer lr")
     args = ap.parse_args()
 
     if args.device == "auto":
@@ -174,6 +332,10 @@ def main() -> None:
     else:
         device = args.device
     print(f"device={device}")
+
+    if args.init_checkpoint:
+        finetune(args, device)
+        return
 
     data = load_dataset(args.data)
     obs_all = data["obs"]

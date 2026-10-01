@@ -89,18 +89,18 @@ class Searcher:
         self.cfg: SearchConfig = cfg
         self.rng = np.random.default_rng(cfg.seed)
 
-    # -- search -----------------------------------------------------------
-    def search(self, board: rules.Board, passes: int) -> int:
-        """Return the chosen move index (0..80 point, 81 pass)."""
-        if passes >= 2:
-            return PASS
+    def _search_root(self, board: rules.Board, passes: int) -> _Node | None:
+        """Run the full search; return the root node.
+
+        Returns None when only pass is legal (search is vacuous).
+        """
         root = _Node()
         root.board = _clone(board)
         root.passes = passes
         root.to_move = board.to_play
         root.legal = selfplay.bot_mask(root.board, root.to_move)
         if int(root.legal.sum()) <= 1:  # only pass is legal
-            return PASS
+            return None
         nodes = [root]
         self._evaluate([root])          # root priors
         self._add_root_noise(root)
@@ -131,7 +131,43 @@ class Searcher:
                 for (node, path), v in zip(leaves, values, strict=True):
                     self._backup(nodes, path, v)
                     sims += 1
+        return root
+
+    # -- search -----------------------------------------------------------
+    def search(self, board: rules.Board, passes: int) -> int:
+        """Return the chosen move index (0..80 point, 81 pass)."""
+        if passes >= 2:
+            return PASS
+        root = self._search_root(board, passes)
+        if root is None:
+            return PASS
         return self._choose_move(root)
+
+    def search_with_visits(
+            self, board: rules.Board, passes: int) -> tuple[int, np.ndarray, float]:
+        """Run the search; return (move, visit distribution, root value).
+
+        The visit distribution is root visit counts normalized over all 82
+        actions (zeros on illegal moves); the root value is the mean
+        backed-up value from the side-to-move's perspective. Intended for
+        search-distillation targets: the same search (with Dirichlet root
+        noise) whose play produced the measured MCTS strength gain.
+        """
+        if passes >= 2:
+            v = np.zeros(82, dtype=np.float64)
+            v[PASS] = 1.0
+            return PASS, v, 0.0
+        root = self._search_root(board, passes)
+        if root is None:
+            v = np.zeros(82, dtype=np.float64)
+            v[PASS] = 1.0
+            return PASS, v, 0.0
+        n = cast(np.ndarray, root.N).astype(np.float64)
+        w = cast(np.ndarray, root.W).astype(np.float64)
+        tot = float(n.sum())
+        visits = n / tot if tot > 0 else np.zeros(82, dtype=np.float64)
+        root_value = float(w.sum() / tot) if tot > 0 else 0.0
+        return self._choose_move(root), visits, root_value
 
     def _select_leaf(self, nodes: list[_Node],
                      pending: set[int]) -> _SelectOutcome:
