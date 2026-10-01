@@ -563,3 +563,26 @@ fine-tuning is now known-poison, which inflates the gap vs a "do nothing" baseli
 but the treatment matching/beating the untouched baseline shows the signal isn't just
 damage mitigation). Natural next: longer low-LR distill run, or distill-then-short-PPO.
 Whether 62.5% earns the demo default is the user's call (needs commit + push).
+
+## MCTS-100 on the distilled model (2026-10-01) — search gain absorbed
+
+**Question:** does play-time search still help the search-distilled policy?
+256-game ladder, MCTS-100 via the Rust mcts_gtp engine on
+`weights/supervised-search-distill-6M.bin`, levels 1/3/5/8 x 64, temp n/a (search):
+L1 46-18, L3 40-23, L5 45-19, L8 35-29 = 166-89 raw; 1 gnugo-resign game hit the
+known "winner: them" summary bug -> corrected **167-89 (65.2%)**, no forfeits.
+
+**Comparisons:**
+- Distilled greedy 62.5% -> distilled + MCTS-100 65.2%: **+2.7pp, ~0.6 sigma (noise)**.
+- Old policy greedy 60.9% -> old + MCTS-100 73.0%: +12.1pp, ~2.9 sigma.
+- Distilled + MCTS-100 (65.2%) vs old + MCTS-100 (73.0%): **-7.8pp, ~1.9 sigma**,
+  borderline; the sharper distilled prior may explore less well under search
+  (known expert-iteration tension: imitating visit distributions peakens the policy).
+
+**Verdict:** one round of distillation absorbed essentially all the recoverable
+move-selection error Astra identified — the +12pp search gap is gone (+2.7pp n.s.).
+The expert-iteration loop has roughly converged after a single round; a second
+distill round has little signal left to capture. The policy side of this 6M net
+looks tapped out via the search route — the value head (untouched by distillation)
+is now the prime suspect for remaining headroom, i.e. the terminal-score value
+probe is the most attractive next direction.
