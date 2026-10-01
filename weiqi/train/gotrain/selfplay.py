@@ -394,7 +394,7 @@ class SelfPlayGo:
     def _observe_learner(self, idxs: np.ndarray) -> np.ndarray:
         obs = np.zeros((len(idxs), self.n_planes, N, N), dtype=np.float32)
         for k, i in enumerate(idxs):
-            obs[k] = self._encode(self.boards[int(i)], self.learner_color[int(i)])
+            obs[k] = self._encode(self.boards[int(i)], int(self.learner_color[int(i)]))
         return obs
 
     def _apply(self, i: int, move_idx: int, color: int) -> bool:
@@ -435,7 +435,7 @@ class SelfPlayGo:
         masks = np.zeros((len(idxs), N_MOVES), dtype=bool)
         for k, i in enumerate(idxs):
             i = int(i)
-            color = opponent(self.learner_color[i])
+            color = opponent(int(self.learner_color[i]))
             obs[k] = self._encode(self.boards[i], color)
             masks[k] = bot_mask(self.boards[i], color)
         opp_actions = np.asarray(
@@ -444,7 +444,7 @@ class SelfPlayGo:
         for k, i in enumerate(idxs):
             i = int(i)
             if not self.done[i]:
-                self._apply(i, opp_actions[k], opponent(self.learner_color[i]))
+                self._apply(i, opp_actions[k], opponent(int(self.learner_color[i])))
 
     # -- main step -------------------------------------------------------------
     def step(self, actions: np.ndarray) -> tuple[np.ndarray, np.ndarray,

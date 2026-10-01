@@ -4,3 +4,7 @@ runs/
 exports/
 .venv/
 __pycache__/
+
+# mypyc build output (opt-in via build_rules_ext.py, never committed)
+gotrain/*.so
+build/
