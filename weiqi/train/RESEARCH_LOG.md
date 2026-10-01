@@ -397,3 +397,17 @@ Sol (gpt-6-sol) reviewed the 2x2 results with code inspection (`-C` flag).
 - The earlier tiny-model lit review (`workspace/research/tiny-model-lit-review.md`) already flagged interleaved IL+RL as an open question; this run answers it affirmatively for our setup.
 
 **Verdict:** PPO+BC (60.9%) is the new strongest model, decisively beating plain PPO at the matched 6M budget. Shipped to the demo page (see below). The plain-PPO plateau at 50.4%/46.1% was not a capacity ceiling — keeping human moves in the training loop broke through it.
+
+## MCTS-100 on the PPO+BC net (2026-09-30)
+
+**Question:** the old MCTS-100 test (on the 15.5M PPO-from-scratch net: 5–27, no gain over greedy 7–25) said search didn't help. Does that verdict hold on the much stronger PPO+BC 6M net (greedy 156–100, 60.9%)?
+
+**Design:** 256-game GNU Go ladder, same protocol as the greedy ladder (temp 0.2, 64 games each at levels 1/3/5/8, alternating colors, `--jobs 2`). Engine: `gotrain.mcts_gtp`, 100 sims, batch 16, temp 0.2 (`eval/ladder_mcts100_ppo_bc_256.json`). A 64-game probe (43–21, 67.2%) preceded the full run.
+
+**Result: MCTS-100 wins clearly. 187–69 (73.0%)** vs greedy 156–100 (60.9%). Per-level: 1: 41–23, 3: 49–15, 5: 44–20, 8: 53–11. The gap is +12.1pp at ±~4.1pp SE → ~2.9σ. Largest gains at levels 3/5/8; level 1 roughly flat (43–21 → 41–23, noise).
+
+**Caveats (protocol confound now closed):** the original greedy ladder (156–100) predates the Python eye-fill filter; the MCTS runs used it. A filtered-greedy rerun was attempted twice — the first attempt died silently with no output file (no handoff delivered; cause unknown, likely runtime/VM flakiness). The second completed: **filtered greedy = 145–111 (56.6%)**, per-level 43–21 / 34–30 / 36–28 / 32–32. So the filter's effect on greedy alone is 60.9% → 56.6% (−4.3pp, ~1.0σ — indistinguishable from noise; if anything the train/eval mismatch slightly hurts, since the net trained without the filter). Against the matched filtered baseline, **MCTS-100 wins by +16.4pp (73.0% vs 56.6%), ~4.0σ** — an even cleaner and stronger result than vs the unfiltered baseline.
+- The old null verdict (15.5M net) stands for that net — search's value is policy-dependent. The BC-shaped policy gives the value head better candidates to arbitrate among; on the peaky PPO-from-scratch policy, 100 sims mostly rubber-stamped the argmax (see the 2026-09-25 search-characterization note).
+- 100 sims ≈ 85s/move on this 2-CPU box — the demo's MCTS toggle is now worth much more than it was.
+
+**Verdict:** search helps the PPO+BC net a lot (+12pp, significant). The "MCTS doesn't help" verdict is revised: it didn't help the weak peaky policy; it decisively helps the stronger BC-shaped one.
