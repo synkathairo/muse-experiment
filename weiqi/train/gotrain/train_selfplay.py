@@ -806,6 +806,12 @@ def main() -> None:
     # Auxiliary labels only exist for games that finish inside the rollout;
     # when --ownership is off (or both weights are 0) skip the bookkeeping.
     aux_on = args.ownership and (args.aux_own_w > 0 or args.aux_margin_w > 0)
+    if args.tactical and aux_on:
+        raise ValueError(
+            "--tactical and --ownership are incompatible: GoNetTactical has no "
+            "auxiliary heads (no forward_aux), so the ownership/margin update "
+            "cannot run. Use one or the other."
+        )
 
     # ---- behavioral-cloning demo data --------------------------------------
     bc_on = args.bc_data is not None and args.bc_coef > 0
@@ -967,9 +973,10 @@ def main() -> None:
             valid = b_aux_valid.reshape(-1)
             if bool(valid.any()):
                 vdev = valid.to(device)
-                # aux_update needs the aux heads, i.e. GoNetAux; the cast
-                # documents the assumption (--tactical + --ownership would
-                # raise AttributeError on GoNetTactical.forward_aux).
+                # aux_update needs the aux heads, i.e. GoNetAux. The --tactical +
+                # --ownership combination is rejected at startup (ValueError),
+                # so by the time aux_on is true, policy is always GoNetAux and
+                # this cast is exact.
                 aux_stats = aux_update(
                     cast("GoNetAux", policy), optimizer, cfg,
                     flat(b_obs).to(device)[vdev],
