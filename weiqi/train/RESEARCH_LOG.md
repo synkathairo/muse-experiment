@@ -586,3 +586,25 @@ distill round has little signal left to capture. The policy side of this 6M net
 looks tapped out via the search route — the value head (untouched by distillation)
 is now the prime suspect for remaining headroom, i.e. the terminal-score value
 probe is the most attractive next direction.
+
+## Head-to-head: distilled vs PPO+BC champion (2026-10-01) — no confirmed gain
+
+**Question:** is the distilled 62.5% model actually stronger than the 60.9% champion,
+or was the ladder edge noise? Direct 256-game match via new
+`gotrain/match_head2head.py` (both nets in-process, temp 0.2, alternating colors,
+Tromp-Taylor scoring, seed 7): **distilled 116 - old 140 (45.3%)**.
+Color splits: distilled as Black 44-84 (34.4%), as White 72-56 (56.2%) — the old
+model was better in both colors (as Black 56-128=43.8%, as White 84-128=65.6%).
+The huge White edge (~25pp) is the 7.5-komi effect, visible in all our ladders.
+
+**Interpretation:** 45.3% is 1.5 sigma below 50% — not significant, but it leans
+the other way from the ladders and kills the hopeful reading. Combined evidence:
+ladders 62.5% vs 60.9% (+1.6pp, n.s.), head-to-head 45.3% (1.5 sigma under even).
+The only honest conclusion is the two models are approximately equal; we cannot
+distinguish them. The distillation's solid win remains the +17.6pp over the
+matched BC-only control (4.1 sigma) — i.e. the teacher signal is real and it
+anchored the policy against BC-collapse — plus the absorbed search gap. But there
+is no established absolute strength gain over the untouched baseline. The demo
+default (distilled) is a judgment call between statistically tied models.
+Resolving a ~3pp true edge would need ~1100 head-to-head games (~35 min at this
+throughput) — not run.
