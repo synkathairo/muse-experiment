@@ -608,3 +608,35 @@ is no established absolute strength gain over the untouched baseline. The demo
 default (distilled) is a judgment call between statistically tied models.
 Resolving a ~3pp true edge would need ~1100 head-to-head games (~35 min at this
 throughput) — not run.
+
+## Value-head probe (2026-10-02) — headroom confirmed, modest
+
+**Question:** the policy side looks tapped (distillation absorbed the search gap,
+PPO plateaued). Is the value head the remaining bottleneck?
+**Design (Astra's):** 1600 fresh self-play games with the champion (temp 0.2),
+216,531 positions; target = terminal Tromp-Taylor outcome from player-to-move's
+perspective (komi in scoring; no resignations in self-play). Split by game:
+1440 train / 160 games held out (21,591 positions). Fresh value head with
+*identical* architecture to the net's own head, trained on the frozen champion
+trunk with MSE vs +/-1; Brier = mean((p-y)^2) with p=(t+1)/2. The comparison that
+matters is fresh-head vs existing-head on held-out Brier — not predictability
+per se.
+
+**Results (held-out Brier, lower better):**
+- Existing value head: **0.1697**
+- Fresh head (early-stopped, epoch 10): **0.1582**; final epoch 30: 0.1636
+  (overfits after ~epoch 10 while train MSE keeps falling — needs early stopping
+  or regularization in a real retrain)
+- Naive always-0.5: 0.2500
+- By stage: early (moves 0-39): existing **0.2509** vs fresh 0.2349 — the PPO head
+  is literally no better than a coin flip in the opening; mid: 0.1743 vs 0.1626
+  (fresh clearly better); late (80+): 0.1077 vs 0.1127 (existing slightly better
+  — the PPO head kept something useful for nearly-decided positions).
+
+**Verdict:** yes, the value head is undertrained relative to what the trunk
+supports — ~4-7% relative Brier headroom, concentrated early/mid-game. The
+actionable fix: retrain or fine-tune the value head with clean terminal-outcome
+targets (auxiliary Monte Carlo loss, or a head-only fine-tune like this probe).
+Caveat (Astra's, still applies): Brier is not Elo — the strength gain needs a
+ladder to confirm. But this is now the highest-expected-value direction: cheap,
+diagnosed, and the policy routes are exhausted.
